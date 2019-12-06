@@ -1,0 +1,12 @@
+vim/.netrwhist
+vim/tags/python.ctags
+ipython/db/
+ipython/history
+foodplan/tokenjar
+ipython/profile_default/history.sqlite
+vim/spell/sv.utf-8.spl
+vim/spell/sv.utf-8.sug
+
+*.pyc
+*.swp
+

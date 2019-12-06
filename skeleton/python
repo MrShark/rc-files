@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+
+"""
+  Skeleton Python script
+
+  Purpose:
+  ...
+"""
+
+import os
+import sys
+import argparse
+
+
+scriptname = os.path.basename(sys.argv[0])
+__version__ = "0.0.1"
+
+def main(args):
+    """
+    Main processing
+    """
+    return 0
+
+
+if __name__ == '__main__' or __name__ == sys.argv[0]:
+    parser = argparse.ArgumentParser(description='Skeleton file')
+    parser.add_argument('--debug', dest='debug_level',
+                        type=int, default=0,
+                        help='Debug level, higher is more info')
+
+    parser.add_argument('file', metavar='FILE', type=argparse.FileType("r"), nargs='+',
+                        help='files to process')
+
+    args = parser.parse_args()
+
+    try:
+        sys.exit(main(args))
+    except KeyboardInterrupt:
+        print("[{}]  Interrupted!".format(scriptname))

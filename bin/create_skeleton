@@ -1,0 +1,75 @@
+#!/usr/bin/env python
+"""
+  Skeleton Creator
+
+  Creates a sceleton file useful for development
+"""
+
+import os
+import sys
+import argparse
+import shutil
+from glob import glob
+
+
+scriptname  = os.path.basename(sys.argv[0])
+__version__ = "0.0.1"
+__id__ = ""
+
+
+args = None
+
+skeleton_dir = os.path.expanduser("~/.skeleton/")
+
+def list_skeletons():
+    for sf in glob(skeleton_dir+"*"):
+        print sf[len(skeleton_dir):]
+
+def init():
+    """
+    Initialize the enviorment and parse options
+    """
+    global args
+    parser = argparse.ArgumentParser(description='Skeleton file')
+    parser.add_argument('--debug', dest='debug_level',
+                        type=int, default=0, help='Debug level, higher is more info')
+    parser.add_argument('--language', type=str, default="python",
+                        help='Type of skeleton to create')
+    parser.add_argument('--list', default=False, action='store_true',
+                        help='List available skeletons')
+    parser.add_argument('outputname', metavar='filename', type=str, nargs="?",
+                        help='Output filename')
+
+    args = parser.parse_args()
+
+    if args.list:
+        list_skeletons()
+        sys.exit(0)
+    elif not args.outputname:
+        parser.print_help()
+        sys.exit(1)
+
+
+def main():
+    """
+    Main prosessing
+    """
+    init()
+
+    infilename = os.path.join(skeleton_dir, args.language)
+    if os.path.exists(infilename) and not os.path.isdir(infilename):
+        shutil.copy2(infilename, args.outputname)
+    else:
+        print "Could not find inputfile: %s" % infilename
+        return 1
+
+    return 0
+
+
+
+if __name__ == '__main__' or __name__ == sys.argv[0]:
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt, e:
+        print "[%s]  Interrupted!" % scriptname
+
