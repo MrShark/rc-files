@@ -51,12 +51,12 @@ def main():
     Main prosessing
     """
     init()
-    print word()+separator()+word()+separator()+word()
+    print(word()+separator()+word()+separator()+word())
     return 0
 
 
 if __name__ == '__main__' or __name__ == sys.argv[0]:
     try:
         sys.exit(main())
-    except KeyboardInterrupt, e:
-        print "[%s]  Interrupted!" % scriptname
+    except KeyboardInterrupt as e:
+        print("[%s]  Interrupted!" % scriptname)

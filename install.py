@@ -58,15 +58,15 @@ def install_link(src, dst):
     """
     if lexists(dst):
         if not islink(dst):
-            print "%s exists, but is not a link" % dst
+            print("%s exists, but is not a link" % dst)
         elif realpath(dst) != src:
-            print "%s is a link, but not to %s" % (dst, src)
+            print("%s is a link, but not to %s" % (dst, src))
     else:
         if not exists(dirname(dst)):
             mkdir(dirname(dst))
-            print "Created dir %s" % dirname(dst)
+            print("Created dir %s" % dirname(dst))
         symlink(src, dst)
-        print "Created link %s -> %s" % (dst, src)
+        print("Created link %s -> %s" % (dst, src))
 
 
 def get_installed_packages():
@@ -99,6 +99,6 @@ for pkg in DEB_PACKAGES:
         missing_packages.append(pkg)
 
 if missing_packages:
-    print "The following packages are missing:", " ".join(missing_packages)
-    print "To fix, please run:"
-    print "sudo apt-get install", " ".join(missing_packages)
+    print("The following packages are missing:", " ".join(missing_packages))
+    print("To fix, please run:")
+    print("sudo apt-get install", " ".join(missing_packages))
