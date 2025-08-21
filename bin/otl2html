@@ -1,2 +1,0 @@
-#!/bin/sh
-otlParser.rb -f HTML "$@"
