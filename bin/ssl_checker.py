@@ -51,7 +51,6 @@ def colorize(msg: str, color: str = "white", flashing: bool = False) -> str:
 
 def main() -> None:
     cfg_file = pathlib.Path("~/.ssh_checker_urls").expanduser()
-    print(cfg_file)
     if len(sys.argv) < 2:
         if cfg_file.exists():
             urls = cfg_file.read_text(encoding="utf-8").splitlines()
