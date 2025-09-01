@@ -5,6 +5,7 @@ import datetime
 import socket
 import ssl
 import sys
+import pathlib
 from urllib.parse import urlparse
 
 
@@ -49,11 +50,18 @@ def colorize(msg: str, color: str = "white", flashing: bool = False) -> str:
 
 
 def main() -> None:
+    cfg_file = pathlib.Path("~/.ssh_checker_urls").expanduser()
+    print(cfg_file)
     if len(sys.argv) < 2:
-        print("Usage: python3 ssl_checker.py <url1> <url2> ...")
-        sys.exit(1)
-
-    urls = sys.argv[1:]
+        if cfg_file.exists():
+            urls = cfg_file.read_text(encoding="utf-8").splitlines()
+            urls = [u.split("#", 1)[0] for u in urls]
+            urls = [u for u in urls if u]
+        else:
+            print("Usage: ssl_checker <url1> <url2> ...")
+            sys.exit(1)
+    else:
+        urls = sys.argv[1:]
 
     for url in urls:
         parsed = urlparse(url)
