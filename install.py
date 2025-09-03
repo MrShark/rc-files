@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""RC-file installer.
+"""
+RC-file installer.
 
-Creates symlinks from the bundled dot-files to the user’s home directory,
+Creates symlinks from the bundled dot-files to the user's home directory,
 recursively installing any executable scripts found in the `bin/` directory.
 """
 
@@ -25,7 +26,8 @@ BINDIRS: tuple[str, ...] = ("bin",)
 
 
 def install_link(src: Path, dst: Path) -> None:
-    """Create a symbolic link `dst` pointing to `src`.
+    """
+    Create a symbolic link `dst` pointing to `src`.
 
     - If `dst` already exists and is not a symlink, warn.
     - If `dst` is a symlink but points elsewhere, warn.

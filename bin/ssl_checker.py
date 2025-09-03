@@ -2,10 +2,10 @@
 """Checks the SSL/TLS certificate expiry for a list of HTTPS URLs."""
 
 import datetime
+import pathlib
 import socket
 import ssl
 import sys
-import pathlib
 from urllib.parse import urlparse
 
 
@@ -37,7 +37,7 @@ def get_cert_expiry(hostname: str, port: int = 443):
     return days_left, not_after, True, None
 
 
-def colorize(msg: str, color: str = "white", flashing: bool = False) -> str:
+def colorize(msg: str, color: str = "white", *, flashing: bool = False) -> str:
     colors = {
         "red": "\033[91m",
         "yellow": "\033[93m",
@@ -50,7 +50,7 @@ def colorize(msg: str, color: str = "white", flashing: bool = False) -> str:
 
 
 def main() -> None:
-    cfg_file = pathlib.Path("~/.ssh_checker_urls").expanduser()
+    cfg_file = pathlib.Path("~/.ssl_checker_urls").expanduser()
     if len(sys.argv) < 2:
         if cfg_file.exists():
             urls = cfg_file.read_text(encoding="utf-8").splitlines()
