@@ -1,50 +1,58 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
+"""RC-file installer.
 
-from os import environ, mkdir, symlink, walk
-from os.path import abspath, dirname, exists, islink, join, lexists, realpath
+Creates symlinks from the bundled dot-files to the user’s home directory,
+recursively installing any executable scripts found in the `bin/` directory.
+"""
 
-CONFIGDIR = abspath(dirname(__file__))
-HOME = environ["HOME"]
+from __future__ import annotations
 
-DOTFILES_TO_INSTALL = (
+import os
+from pathlib import Path
+
+# Base directories
+RC_FILE_DIR: Path = Path(__file__).resolve().parent
+HOME: Path = Path(os.environ["HOME"])
+
+# Items to install
+DOTFILES: tuple[str, ...] = (
     "bashrc",
     "passwdwords",
 )
 
+# Directories to install recursively
+BINDIRS: tuple[str, ...] = ("bin",)
 
-DIRS_TO_INSTALL_RECURSIVLY = ("bin",)
 
+def install_link(src: Path, dst: Path) -> None:
+    """Create a symbolic link `dst` pointing to `src`.
 
-def install_link(src, dst):
-    """Create a link from src to dst if it does not exist
-    else warn if dst exists but isn't a link to src
+    - If `dst` already exists and is not a symlink, warn.
+    - If `dst` is a symlink but points elsewhere, warn.
+    - Otherwise, create the necessary parent directories and the symlink.
     """
-    if lexists(dst):
-        if not islink(dst):
-            print("%s exists, but is not a link" % dst)
-        elif realpath(dst) != src:
-            print("%s is a link, but not to %s" % (dst, src))
+    if dst.exists(follow_symlinks=False):
+        if not dst.is_symlink():
+            print(f"{dst} exists, but is not a symlink")
+        elif dst.resolve() != src.resolve():
+            print(f"{dst} is a symlink, but not to {src}")
     else:
-        if not exists(dirname(dst)):
-            mkdir(dirname(dst))
-            print("Created dir %s" % dirname(dst))
-        symlink(src, dst)
-        print("Created link %s -> %s" % (dst, src))
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst.symlink_to(src)
+        print(f"Created link {dst} -> {src}")
 
 
-for f in DOTFILES_TO_INSTALL:
-    target = join(HOME, "." + f)
-    source = join(CONFIGDIR, f)
-    install_link(source, target)
+# Install individual dot-files
+for dotfile in DOTFILES:
+    install_link(RC_FILE_DIR / dotfile, HOME / f".{dotfile}")
 
-
-for f in DIRS_TO_INSTALL_RECURSIVLY:
-    sourcedir = join(CONFIGDIR, f)
-    for d, dirs, files in walk(sourcedir, topdown=True):
-        targetdir = join(HOME, d.lstrip(CONFIGDIR))
-        if not lexists(targetdir):
-            mkdir(targetdir)
-        for f in files:
-            target_name = f
-            target_name = target_name.removesuffix(".py")
-            install_link(join(d, f), join(targetdir, target_name))
+# Install executable scripts recursively
+for bindir in BINDIRS:
+    src_root: Path = RC_FILE_DIR / bindir
+    dst_root: Path = HOME / bindir
+    for path in src_root.rglob("*"):
+        if not path.is_file():
+            continue
+        relative = path.relative_to(src_root)
+        dst_path = dst_root / relative.with_suffix("")
+        install_link(path, dst_path)
