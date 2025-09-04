@@ -16,3 +16,5 @@ run_if_found() {
 run_if_found poetry completions bash >> ~/.bash_completion
 run_if_found ruff generate-shell-completion bash >> ~/.bash_completion
 run_if_found git lfs completion bash  >> ~/.bash_completion
+run_if_found uv generate-shell-completion bash >> ~/.bash_completion
+run_if_found pip completion --bash >> ~/.bash_completion
