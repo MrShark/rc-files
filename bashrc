@@ -51,3 +51,16 @@ eval "$(direnv hook bash)"
 if [ -f ~/.bashrc_local ]; then
 	. ~/.bashrc_local
 fi
+
+# Deduplicate $PATH entries in-place
+
+IFS=':' read -ra dirs <<< "$PATH"
+declare -A seen
+new_path=""
+for dir in "${dirs[@]}"; do
+    if [[ -n "$dir" && -z "${seen[$dir]}" ]]; then
+        seen["$dir"]=1
+        new_path+="${dir}:"
+    fi
+done
+export PATH="${new_path%:}"
