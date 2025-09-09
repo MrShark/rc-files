@@ -33,7 +33,7 @@ def get_cert_expiry(hostname: str, *, port: int = 443, verbose: bool = False):
             ).replace(tzinfo=datetime.timezone.utc)
     except ssl.SSLError as e:
         return None, None, False, str(e), cert_information
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         return None, None, None, str(e), cert_information
 
     now = datetime.datetime.now(datetime.timezone.utc)
@@ -84,7 +84,7 @@ def format_status(days_left: int) -> str:
     return colorize(base, "green")
 
 
-def fmt_list(tuples):
+def fmt_list(tuples) -> str:
     return ", ".join(f"{k}={v}" for k, v in tuples)
 
 
@@ -99,7 +99,7 @@ def print_verbose(cert_dict: dict) -> None:
         if key in {"subject", "issuer", "subjectAltName"}:
             continue
         if isinstance(value, list) and value and isinstance(value[0], tuple):
-            value = fmt_list(value)
+            value = fmt_list(value)  # noqa: PLW2901
         print(f"  {key}: {value}")
 
 
@@ -118,6 +118,8 @@ def main() -> None:
 
     for url in urls:
         parsed = urlparse(url)
+        if not parsed.scheme:
+            parsed = urlparse(f"https://{url}")
         hostname, port = parsed.hostname, parsed.port or 443
         if not hostname:
             print(colorize(f"Invalid URL: {url}", "red"))
