@@ -77,9 +77,9 @@ def format_status(days_left: int) -> str:
     base = f"{days_left} day(s) left"
     if days_left < 0:
         return colorize(f"EXPIRED ({abs(days_left)} day(s) ago)", "red", flashing=True)
-    if days_left <= 4:
+    if days_left <= 10:
         return colorize(base, "red")
-    if days_left <= 14:
+    if days_left <= 30:
         return colorize(base, "yellow")
     return colorize(base, "green")
 
