@@ -62,6 +62,12 @@ def build_argparser() -> argparse.ArgumentParser:
         action="store_true",
         help="Show detailed certificate info",
     )
+    parser.add_argument(
+        "-s",
+        "--sort",
+        action="store_true",
+        help="Sort the input in alphabetical order",
+    )
     return parser
 
 
@@ -115,6 +121,9 @@ def main() -> None:
     if not urls:
         parser.print_usage()
         sys.exit(1)
+
+    if args.sort:
+        urls.sort()
 
     for url in urls:
         parsed = urlparse(url)
