@@ -10,7 +10,7 @@ import sys
 from urllib.parse import urlparse
 
 
-def get_cert_expiry(hostname: str, *, port: int = 443, verbose: bool = False):
+def get_cert_expiry(hostname: str, *, port: int = 443, verbose: bool = False):  # noqa: ANN201
     """
     Connect to hostname:port and check the certificate.
 
@@ -90,7 +90,7 @@ def format_status(days_left: int) -> str:
     return colorize(base, "green")
 
 
-def fmt_list(tuples) -> str:
+def fmt_list(tuples) -> str:  # noqa: ANN001
     return ", ".join(f"{k}={v}" for k, v in tuples)
 
 

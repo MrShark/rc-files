@@ -9,14 +9,14 @@ Usage:
 
 import argparse
 import os
-from typing import Dict, List
 
 import requests
 
 API = "https://api.github.com"
 TOKEN = os.getenv("GH_TOKEN")
 if not TOKEN:
-    raise SystemExit("GH_TOKEN not set")
+    msg = "GH_TOKEN not set"
+    raise SystemExit(msg)
 
 HEADERS = {
     "Authorization": f"Bearer {TOKEN}",
@@ -28,7 +28,7 @@ HEADERS = {
 # --------------------------------------------------------------------------- #
 # Helper: paginated GET
 # --------------------------------------------------------------------------- #
-def _get(url: str, params: dict = None) -> List[dict]:
+def _get(url: str, params: dict | None = None) -> list[dict]:
     """Return all pages of results for a GitHub REST endpoint."""
     items = []
     page = 1
@@ -51,7 +51,7 @@ def _get(url: str, params: dict = None) -> List[dict]:
 # --------------------------------------------------------------------------- #
 # Fetch repositories where the team has maintainer permission
 # --------------------------------------------------------------------------- #
-def repos_for_team(org: str, team_slug: str) -> List[Dict]:
+def repos_for_team(org: str, team_slug: str) -> list[dict]:
     url = f"{API}/orgs/{org}/teams/{team_slug}/repos"
     repos = _get(url)  # team/repositories endpoint
     # Keep only those with maintainer rights
@@ -61,16 +61,17 @@ def repos_for_team(org: str, team_slug: str) -> List[Dict]:
 # --------------------------------------------------------------------------- #
 # Fetch open Dependabot alerts for a repository
 # --------------------------------------------------------------------------- #
-def open_alerts(owner: str, repo: str) -> List[Dict]:
+def open_alerts(owner: str, repo: str) -> list[dict]:
     """
     Fetch open Dependabot alerts for a repository.
+
     Cursor-based pagination is required; GitHub removed offset pagination.
     """
     url = f"{API}/repos/{owner}/{repo}/dependabot/alerts"
     params = {"state": "open", "per_page": 100}
     alerts = []
     while True:
-        r = requests.get(url, headers=HEADERS, params=params)
+        r = requests.get(url, headers=HEADERS, params=params, timeout=5)
         if r.status_code == 403:
             break
         r.raise_for_status()
@@ -94,10 +95,11 @@ def open_alerts(owner: str, repo: str) -> List[Dict]:
         params = None  # next_url already contains all params
     return alerts
 
+
 # --------------------------------------------------------------------------- #
 # Fetch open PRs created by Dependabot
 # --------------------------------------------------------------------------- #
-def open_prs(owner: str, repo: str) -> List[Dict]:
+def open_prs(owner: str, repo: str) -> list[dict]:
     url = f"{API}/repos/{owner}/{repo}/pulls"
     prs = _get(url, {"state": "open"})
     return [p for p in prs if p["user"]["login"] == "dependabot[bot]"]
@@ -106,11 +108,9 @@ def open_prs(owner: str, repo: str) -> List[Dict]:
 # --------------------------------------------------------------------------- #
 # Main routine
 # --------------------------------------------------------------------------- #
-def main():
+def main() -> None:
     parser = argparse.ArgumentParser(description="Dependabot overview for a team")
-    parser.add_argument(
-        "--org", help="GitHub organisation", default="CL-Products"
-    )
+    parser.add_argument("--org", help="GitHub organisation", default="CL-Products")
     parser.add_argument("--team", help="Team slug", default="devops")
     args = parser.parse_args()
 
@@ -130,7 +130,6 @@ def main():
 
         print(f"\n{name} ({owner})")
 
-
         for a in alerts:
             print(
                 f"  ALERT  {a['security_advisory']['ghsa_id']}  {a['security_advisory']['severity']}"
@@ -138,7 +137,6 @@ def main():
 
         for p in prs:
             print(f"  PR     {p['title']}  {p['html_url']}")
-
 
 
 if __name__ == "__main__":
