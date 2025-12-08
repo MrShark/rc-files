@@ -45,7 +45,7 @@ def colorize(msg: str, color: str = "white", *, flashing: bool = False) -> str:
     colors = {
         "red": "\033[91m",
         "yellow": "\033[93m",
-        "green": "\033[92m",
+        "green": "\033[32m",
         "white": "\033[97m",
         "reset": "\033[0m",
     }
