@@ -11,6 +11,7 @@ import argparse
 import json
 import os
 import urllib.request
+from multiprocessing import Pool
 
 API = "https://api.github.com"
 TOKEN = os.getenv("GH_TOKEN")
@@ -116,6 +117,30 @@ def open_prs(owner: str, repo: str) -> list[dict]:
     return [p for p in prs if p["user"]["login"] == "dependabot[bot]"]
 
 
+def process_repo(r: dict) -> str | None:
+    """Process a single repository and return formatted output if alerts or PRs exist."""
+    owner, name = r["owner"]["login"], r["name"]
+
+    alerts = open_alerts(owner, name)
+    prs = open_prs(owner, name)
+
+    if not alerts and not prs:
+        return None
+
+    lines = [f"\n{name} ({owner})"]
+
+    lines.extend(
+        [
+            f"  ALERT  {a['security_advisory']['ghsa_id']}  {a['security_advisory']['severity']}"
+            for a in alerts
+        ]
+    )
+
+    lines.extend([f"  PR     {p['title']}  {p['html_url']}" for p in prs])
+
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- #
 # Main routine
 # --------------------------------------------------------------------------- #
@@ -130,24 +155,14 @@ def main() -> None:
         print(f"No repositories found where {args.team} is maintainer")
         return
 
-    for r in repos:
-        owner, name = r["owner"]["login"], r["name"]
+    # Use multiprocessing Pool to handle repositories in parallel
+    with Pool() as pool:
+        results = pool.map(process_repo, repos)
 
-        alerts = open_alerts(owner, name)
-        prs = open_prs(owner, name)
-
-        if not alerts and not prs:
-            continue
-
-        print(f"\n{name} ({owner})")
-
-        for a in alerts:
-            print(
-                f"  ALERT  {a['security_advisory']['ghsa_id']}  {a['security_advisory']['severity']}"
-            )
-
-        for p in prs:
-            print(f"  PR     {p['title']}  {p['html_url']}")
+    # Print non-None results
+    for result in results:
+        if result:
+            print(result)
 
 
 if __name__ == "__main__":
