@@ -8,9 +8,9 @@ Usage:
 """
 
 import argparse
+import json
 import os
-
-import requests
+import urllib.request
 
 API = "https://api.github.com"
 TOKEN = os.getenv("GH_TOKEN")
@@ -35,15 +35,19 @@ def _get(url: str, params: dict | None = None) -> list[dict]:
     while True:
         p = (params or {}).copy()
         p.update({"per_page": 100, "page": page})
+        # Construct URL with query parameters
+        query = "&".join(f"{k}={v}" for k, v in p.items())
+        request_url = f"{url}?{query}"
+
+        req = urllib.request.Request(request_url, headers=HEADERS)  # noqa: S310
         try:
-            resp = requests.get(url, headers=HEADERS, params=p, timeout=2)
-            resp.raise_for_status()
-            data = resp.json()
-            if not data:
-                break
-            items.extend(data)
-            page += 1
-        except requests.exceptions.HTTPError:
+            with urllib.request.urlopen(req, timeout=2) as response:  # noqa: S310
+                data = json.loads(response.read().decode())
+                if not data:
+                    break
+                items.extend(data)
+                page += 1
+        except Exception:
             return []
     return items
 
@@ -71,28 +75,35 @@ def open_alerts(owner: str, repo: str) -> list[dict]:
     params = {"state": "open", "per_page": 100}
     alerts = []
     while True:
-        r = requests.get(url, headers=HEADERS, params=params, timeout=5)
-        if r.status_code == 403:
+        query = "&".join(f"{k}={v}" for k, v in params.items())
+        request_url = f"{url}?{query}"
+        req = urllib.request.Request(request_url, headers=HEADERS)  # noqa: S310
+
+        try:
+            with urllib.request.urlopen(req, timeout=5) as response:  # noqa: S310
+                if response.getcode() == 403:
+                    break
+                batch = json.loads(response.read().decode())
+                if not batch:
+                    break
+                alerts.extend(batch)
+
+                # 'Link' header contains 'rel="next"' URL if more pages exist
+                link = response.headers.get("Link", "")
+                if 'rel="next"' not in link:
+                    break
+                # Parse next URL from Link header
+                next_url = None
+                for part in link.split(","):
+                    if 'rel="next"' in part:
+                        next_url = part.split(";")[0].strip("<> ")
+                        break
+                if not next_url:
+                    break
+                url = next_url
+                params = None  # next_url already contains all params
+        except Exception:
             break
-        r.raise_for_status()
-        batch = r.json()
-        if not batch:
-            break
-        alerts.extend(batch)
-        # 'Link' header contains 'rel="next"' URL if more pages exist
-        link = r.headers.get("Link", "")
-        if 'rel="next"' not in link:
-            break
-        # Parse next URL from Link header
-        next_url = None
-        for part in link.split(","):
-            if 'rel="next"' in part:
-                next_url = part.split(";")[0].strip("<> ")
-                break
-        if not next_url:
-            break
-        url = next_url
-        params = None  # next_url already contains all params
     return alerts
 
 
