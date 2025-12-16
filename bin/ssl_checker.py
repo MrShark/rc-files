@@ -7,16 +7,16 @@ import pathlib
 import socket
 import ssl
 import sys
+from multiprocessing import Pool
 from urllib.parse import urlparse
 
 
-def get_cert_expiry(hostname: str, *, port: int = 443, verbose: bool = False):  # noqa: ANN201
+def get_cert_expiry(hostname: str, *, port: int = 443):  # noqa: ANN201
     """
     Connect to hostname:port and check the certificate.
 
     returns a tuple (days_left, not_after_str, chain_valid, error_string, cert_information).
     """
-    cert_information = None
     try:
         context = ssl.create_default_context()
         with context.wrap_socket(
@@ -24,21 +24,19 @@ def get_cert_expiry(hostname: str, *, port: int = 443, verbose: bool = False):  
             server_hostname=hostname,
         ) as ssock:
             cert = ssock.getpeercert()
-            if verbose:
-                cert_information = dict(cert)
             not_after = cert["notAfter"]
             expiry = datetime.datetime.strptime(
                 not_after,
                 "%b %d %H:%M:%S %Y %Z",
             ).replace(tzinfo=datetime.timezone.utc)
     except ssl.SSLError as e:
-        return None, None, False, str(e), cert_information
+        return None, None, False, str(e)
     except Exception as e:  # noqa: BLE001
-        return None, None, None, str(e), cert_information
+        return None, None, None, str(e)
 
     now = datetime.datetime.now(datetime.timezone.utc)
     days_left = (expiry - now).days
-    return days_left, not_after, True, None, cert_information
+    return days_left, not_after, True, None
 
 
 def colorize(msg: str, color: str = "white", *, flashing: bool = False) -> str:
@@ -56,12 +54,6 @@ def colorize(msg: str, color: str = "white", *, flashing: bool = False) -> str:
 def build_argparser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Check SSL/TLS certificate expiry.")
     parser.add_argument("urls", nargs="*", help="URLs to check")
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Show detailed certificate info",
-    )
     parser.add_argument(
         "-s",
         "--sort",
@@ -94,19 +86,25 @@ def fmt_list(tuples) -> str:  # noqa: ANN001
     return ", ".join(f"{k}={v}" for k, v in tuples)
 
 
-def print_verbose(cert_dict: dict) -> None:
-    print(f"  Subject: {dict(x[0] for x in cert_dict.get('subject', []))}")
-    print(f"  Issuer:  {dict(x[0] for x in cert_dict.get('issuer', []))}")
-    sans = cert_dict.get("subjectAltName", [])
-    if sans:
-        print(f"  SANs:    {', '.join([n[1] for n in sans])}")
+def check_url(url: str) -> str | None:
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        parsed = urlparse(f"https://{url}")
+    hostname, port = parsed.hostname, parsed.port or 443
+    if not hostname:
+        return colorize(f"Invalid URL: {url}", "red")
 
-    for key, value in cert_dict.items():
-        if key in {"subject", "issuer", "subjectAltName"}:
-            continue
-        if isinstance(value, list) and value and isinstance(value[0], tuple):
-            value = fmt_list(value)  # noqa: PLW2901
-        print(f"  {key}: {value}")
+    days_left, not_after, chain_valid, err = get_cert_expiry(
+        hostname,
+        port=port,
+    )
+    if err:
+        return colorize(f"{hostname:30} ERROR: {err}", "red")
+
+    if not chain_valid:
+        return colorize(f"{hostname:30} INVALID CHAIN", "red")
+
+    return f"{hostname:30} {format_status(days_left)}  (Expires: {not_after})"
 
 
 def main() -> None:
@@ -125,31 +123,9 @@ def main() -> None:
     if args.sort:
         urls.sort()
 
-    for url in urls:
-        parsed = urlparse(url)
-        if not parsed.scheme:
-            parsed = urlparse(f"https://{url}")
-        hostname, port = parsed.hostname, parsed.port or 443
-        if not hostname:
-            print(colorize(f"Invalid URL: {url}", "red"))
-            continue
-
-        days_left, not_after, chain_valid, err, cert_dict = get_cert_expiry(
-            hostname,
-            port=port,
-            verbose=args.verbose,
-        )
-
-        if err:
-            print(colorize(f"{hostname:30} ERROR: {err}", "red"))
-            continue
-        if not chain_valid:
-            print(colorize(f"{hostname:30} INVALID CHAIN", "red"))
-            continue
-
-        print(f"{hostname:30} {format_status(days_left)}  (Expires: {not_after})")
-        if args.verbose and cert_dict:
-            print_verbose(cert_dict)
+    with Pool() as pool:
+        results = pool.map(check_url, urls)
+    print("\n".join(results))
 
 
 if __name__ == "__main__":
