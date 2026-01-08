@@ -131,7 +131,7 @@ def process_repo(r: dict) -> str | None:
 
     lines.extend(
         [
-            f"  ALERT  {a['security_advisory']['ghsa_id']}  {a['security_advisory']['severity']}"
+            f"  ALERT  {a['security_advisory']['severity']}\t{a['security_advisory']['summary']}\t{a['html_url']}"
             for a in alerts
         ]
     )
