@@ -26,9 +26,6 @@ HEADERS = {
 }
 
 
-# --------------------------------------------------------------------------- #
-# Helper: paginated GET
-# --------------------------------------------------------------------------- #
 def _get(url: str, params: dict | None = None) -> list[dict]:
     """Return all pages of results for a GitHub REST endpoint."""
     items = []
@@ -36,7 +33,6 @@ def _get(url: str, params: dict | None = None) -> list[dict]:
     while True:
         p = (params or {}).copy()
         p.update({"per_page": 100, "page": page})
-        # Construct URL with query parameters
         query = "&".join(f"{k}={v}" for k, v in p.items())
         request_url = f"{url}?{query}"
 
@@ -53,25 +49,37 @@ def _get(url: str, params: dict | None = None) -> list[dict]:
     return items
 
 
-# --------------------------------------------------------------------------- #
-# Fetch repositories where the team has maintainer permission
-# --------------------------------------------------------------------------- #
 def repos_for_team(org: str, team_slug: str) -> list[dict]:
+    """Fetch repositories where the team has maintainer permission, filtering out archived repositories."""
     url = f"{API}/orgs/{org}/teams/{team_slug}/repos"
     repos = _get(url)  # team/repositories endpoint
-    # Keep only those with maintainer rights
-    return [r for r in repos if r.get("permissions", {}).get("maintain") is True]
+
+    # Filter out archived repositories and those without maintain permission
+    return [
+        r
+        for r in repos
+        if not r.get("archived", False)
+        and r.get("permissions", {}).get("maintain") is True
+    ]
 
 
-# --------------------------------------------------------------------------- #
-# Fetch open Dependabot alerts for a repository
-# --------------------------------------------------------------------------- #
+def dependabot_enabled(owner: str, repo: str) -> bool:
+    """Check if Dependabot security updates are enabled for a repository."""
+    url = f"{API}/repos/{owner}/{repo}"
+    try:
+        req = urllib.request.Request(url, headers=HEADERS)  # noqa: S310
+        with urllib.request.urlopen(req, timeout=2) as response:  # noqa: S310
+            data = json.loads(response.read().decode())
+            return (
+                data["security_and_analysis"]["dependabot_security_updates"]["status"]
+                == "enabled"
+            )
+    except KeyError:
+        return False
+
+
 def open_alerts(owner: str, repo: str) -> list[dict]:
-    """
-    Fetch open Dependabot alerts for a repository.
-
-    Cursor-based pagination is required; GitHub removed offset pagination.
-    """
+    """Fetch open Dependabot alerts for a repository."""
     url = f"{API}/repos/{owner}/{repo}/dependabot/alerts"
     params = {"state": "open", "per_page": 100}
     alerts = []
@@ -89,11 +97,9 @@ def open_alerts(owner: str, repo: str) -> list[dict]:
                     break
                 alerts.extend(batch)
 
-                # 'Link' header contains 'rel="next"' URL if more pages exist
                 link = response.headers.get("Link", "")
                 if 'rel="next"' not in link:
                     break
-                # Parse next URL from Link header
                 next_url = None
                 for part in link.split(","):
                     if 'rel="next"' in part:
@@ -102,16 +108,14 @@ def open_alerts(owner: str, repo: str) -> list[dict]:
                 if not next_url:
                     break
                 url = next_url
-                params = None  # next_url already contains all params
+                params = None
         except Exception:
             break
     return alerts
 
 
-# --------------------------------------------------------------------------- #
-# Fetch open PRs created by Dependabot
-# --------------------------------------------------------------------------- #
 def open_prs(owner: str, repo: str) -> list[dict]:
+    """Fetch open PRs created by Dependabot."""
     url = f"{API}/repos/{owner}/{repo}/pulls"
     prs = _get(url, {"state": "open"})
     return [p for p in prs if p["user"]["login"] == "dependabot[bot]"]
@@ -121,13 +125,22 @@ def process_repo(r: dict) -> str | None:
     """Process a single repository and return formatted output if alerts or PRs exist."""
     owner, name = r["owner"]["login"], r["name"]
 
+    # Check if Dependabot security updates are enabled
+    enabled = dependabot_enabled(owner, name)
+
     alerts = open_alerts(owner, name)
     prs = open_prs(owner, name)
 
-    if not alerts and not prs:
+    if not alerts and not prs and enabled:
         return None
 
     lines = [f"\n{name} ({owner})"]
+
+    # Add warning if Dependabot security updates are not enabled
+    if not enabled:
+        lines.append(
+            f"  ALERT  Dependabot security updates are not enabled for this repository\thttps://github.com/{owner}/{name}/settings/security_analysis"
+        )
 
     lines.extend(
         [
@@ -141,9 +154,6 @@ def process_repo(r: dict) -> str | None:
     return "\n".join(lines)
 
 
-# --------------------------------------------------------------------------- #
-# Main routine
-# --------------------------------------------------------------------------- #
 def main() -> None:
     parser = argparse.ArgumentParser(description="Dependabot overview for a team")
     parser.add_argument("--org", help="GitHub organisation", default="CL-Products")
@@ -155,11 +165,9 @@ def main() -> None:
         print(f"No repositories found where {args.team} is maintainer")
         return
 
-    # Use multiprocessing Pool to handle repositories in parallel
     with Pool() as pool:
         results = pool.map(process_repo, repos)
 
-    # Print non-None results
     for result in results:
         if result:
             print(result)
