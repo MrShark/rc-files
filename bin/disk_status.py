@@ -51,8 +51,8 @@ def run_df(hostspec: str) -> list:
             rows.append(
                 {
                     "fs": parts[0],
+                    "size": parts[1],
                     "used": parts[2],
-                    "avail": parts[3],
                     "use_pct": int(parts[4].rstrip("%")),
                     "mount": parts[5],
                 }
@@ -80,7 +80,7 @@ def main() -> None:
                 warning = f"⚠  WARNING: above {WARN_THRESHOLD}%"
             print(
                 col
-                + f"{r['mount']:30} {r['use_pct']:3}% used ({r['avail']} of {r['used']} free) {warning}"
+                + f"{r['mount']:30} {r['use_pct']:3}% used ({r['used']} of {r['size']} free) {warning}"
                 + RESET
             )
 
