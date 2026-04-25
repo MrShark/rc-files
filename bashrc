@@ -1,5 +1,5 @@
 # .bashrc
-# shellcheck shell=bash 
+# shellcheck shell=bash
 
 # Source global definitions
 if [ -f /etc/bashrc ]; then
@@ -32,14 +32,23 @@ then
 fi
 export PATH
 
-# Command prompt
+# enable bash completion in interactive shells
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
 
+
+# Command prompt
 if [ -f /usr/share/doc/git/contrib/completion/git-prompt.sh ]; then
 	. /usr/share/doc/git/contrib/completion/git-prompt.sh
 fi
 PS1='\w$(__git_ps1 " (%s)") \$ '
 
-# Activate direnv
+# Activate pyenv
 export PYENV_ROOT="$HOME/lib/pyenv"
 [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
@@ -64,3 +73,6 @@ for dir in "${dirs[@]}"; do
     fi
 done
 export PATH="${new_path%:}"
+
+export EDITOR=vim
+alias ls="ls --color"
