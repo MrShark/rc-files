@@ -51,18 +51,6 @@ def colorize(msg: str, color: str = "white", *, flashing: bool = False) -> str:
     return f"{flash}{colors.get(color, colors['white'])}{msg}{colors['reset']}"
 
 
-def build_argparser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Check SSL/TLS certificate expiry.")
-    parser.add_argument("urls", nargs="*", help="URLs to check")
-    parser.add_argument(
-        "-s",
-        "--sort",
-        action="store_true",
-        help="Sort the input in alphabetical order",
-    )
-    return parser
-
-
 def load_urls_from_cfg() -> list[str]:
     cfg_file = pathlib.Path("~/.ssl_checker_urls").expanduser()
     if not cfg_file.exists():
@@ -108,7 +96,14 @@ def check_url(url: str) -> str | None:
 
 
 def main() -> None:
-    parser = build_argparser()
+    parser = argparse.ArgumentParser(description="Check SSL/TLS certificate expiry.")
+    parser.add_argument("urls", nargs="*", help="URLs to check")
+    parser.add_argument(
+        "-s",
+        "--sort",
+        action="store_true",
+        help="Sort the input in alphabetical order",
+    )
     args = parser.parse_args()
 
     if args.urls:

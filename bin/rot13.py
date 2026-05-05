@@ -17,8 +17,7 @@ import sys
 from pathlib import Path
 
 
-def main(argv=None):
-    argv = argv if argv is not None else sys.argv[1:]
+def main():
     parser = argparse.ArgumentParser(prog="rot13", description="ROT13 encoder")
     parser.add_argument(
         "-s", "--string", help="Text to encode (mutually exclusive with input file)"
@@ -27,7 +26,7 @@ def main(argv=None):
     parser.add_argument(
         "file", nargs="?", help='Input file (use "-" or omit for stdin)'
     )
-    args = parser.parse_args(argv)
+    args = parser.parse_args()
 
     # Validate mutually exclusive inputs
     if args.string and args.file:
