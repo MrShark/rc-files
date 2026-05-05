@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "rc-files"
+version = "0.0.0"
+description = "Personal rc files and scripts"
+authors = []
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.12"
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = ["D203", "D212", "T201", "PLR2004", "SIM108", "D103", "E501", "COM812"]
