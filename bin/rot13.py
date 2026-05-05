@@ -56,7 +56,7 @@ def main():
         else:
             sys.stdout.write(encoded)
 
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         print(f"Error: {e}", file=sys.stderr)
         return 1
 

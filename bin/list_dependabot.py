@@ -44,7 +44,7 @@ def _get(url: str, params: dict | None = None) -> list[dict]:
                     break
                 items.extend(data)
                 page += 1
-        except Exception:
+        except Exception:  # noqa: BLE001
             return []
     return items
 
@@ -109,7 +109,7 @@ def open_alerts(owner: str, repo: str) -> list[dict]:
                     break
                 url = next_url
                 params = None
-        except Exception:
+        except Exception:  # noqa: BLE001
             break
     return alerts
 

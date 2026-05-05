@@ -11,7 +11,7 @@ from multiprocessing import Pool
 from urllib.parse import urlparse
 
 
-def get_cert_expiry(hostname: str, *, port: int = 443):  # noqa: ANN201
+def get_cert_expiry(hostname: str, *, port: int = 443):
     """
     Connect to hostname:port and check the certificate.
 
@@ -70,7 +70,7 @@ def format_status(days_left: int) -> str:
     return colorize(base, "green")
 
 
-def fmt_list(tuples) -> str:  # noqa: ANN001
+def fmt_list(tuples) -> str:
     return ", ".join(f"{k}={v}" for k, v in tuples)
 
 

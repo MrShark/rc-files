@@ -67,7 +67,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    hosts = args.hosts if args.hosts else read_config()
+    hosts = args.hosts or read_config()
     if not hosts:
         sys.exit("No hosts given and none found in " + str(CONFIG_FILE))
 

@@ -117,7 +117,7 @@ def _post_script(base_url: str, auth_header: str, groovy_code: str) -> str:
         return response.read().decode()
 
 
-def _write_csv(templates: list[dict], fieldnames: list[str], dest: Any) -> None:  # noqa: ANN401
+def _write_csv(templates: list[dict], fieldnames: list[str], dest: Any) -> None:
     writer = csv.DictWriter(
         dest,
         fieldnames=fieldnames,
