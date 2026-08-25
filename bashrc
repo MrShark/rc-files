@@ -75,4 +75,4 @@ done
 export PATH="${new_path%:}"
 
 export EDITOR=vim
-alias ls="ls --color"
+alias ls="ls --color=auto"
