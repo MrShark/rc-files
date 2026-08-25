@@ -48,7 +48,7 @@ def main() -> None:
 
     if args.merge:
         run(["gh", "pr", "review", "--approve", "-b", ""])
-        run(["gh", "pr", "merge", "--rebase"])
+        run(["gh", "pr", "merge", "--rebase", "--delete-branch"])
 
 
 if __name__ == "__main__":
