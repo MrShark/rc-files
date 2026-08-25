@@ -20,6 +20,7 @@ ignore = [
     "E501",    # no line-length limit
     "COM812",  # trailing comma not required
     "ANN",     # type annotations are optional
+    "CPY001",  # Do not require copyright notices in files
 ]
 
 [dependency-groups]
