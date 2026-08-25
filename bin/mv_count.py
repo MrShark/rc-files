@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 
 
-def main() -> int:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="mv_count", description="Move files to new names with a shared counter"
     )
@@ -48,41 +48,44 @@ def main() -> int:
         help="Show what would be renamed without touching the filesystem",
     )
     parser.add_argument("files", nargs="+", help="Files to rename")
-    args = parser.parse_args()
+    return parser.parse_args()
 
-    sources = [Path(f) for f in args.files]
+
+def check_sources_exist(sources: list[Path]) -> None:
     for src in sources:
         if not src.exists():
             msg = f"Error: source file not found: {src}"
             raise SystemExit(msg)
 
-    destinations = [
-        Path(args.pattern.format(args.start + i)) for i in range(len(sources))
-    ]
+
+def build_destinations(sources: list[Path], pattern: str, start: int) -> list[Path]:
+    destinations = [Path(pattern.format(start + i)) for i in range(len(sources))]
 
     seen = set()
     for dest in destinations:
         if dest in seen:
-            msg = f"Error: pattern {args.pattern!r} produces duplicate destination: {dest}"
+            msg = f"Error: pattern {pattern!r} produces duplicate destination: {dest}"
             raise SystemExit(msg)
         seen.add(dest)
 
+    return destinations
+
+
+def check_conflicts(
+    sources: list[Path], destinations: list[Path], *, force: bool
+) -> None:
     conflicts = [
         dest
         for src, dest in zip(sources, destinations, strict=True)
         if dest != src and dest.exists()
     ]
-    if conflicts and not args.force:
+    if conflicts and not force:
         names = ", ".join(str(c) for c in conflicts)
         msg = f"Error: destination already exists: {names} (use -f to overwrite)"
         raise SystemExit(msg)
 
-    if args.sandbox:
-        for src, dest in zip(sources, destinations, strict=True):
-            if src != dest:
-                print(f"{src} -> {dest} (sandbox, not moved)")
-        return 0
 
+def rename_all(sources: list[Path], destinations: list[Path]) -> None:
     # Move every source to a temporary name first, then rename the temporary
     # names to their final destination. This way overlapping source and
     # destination names (e.g. "a file-1" -> "file-1 file-2") never clobber
@@ -95,12 +98,29 @@ def main() -> int:
         os.close(fd)
         tmp_path = Path(tmp_name)
         src.replace(tmp_path)
-        temp_moves.append((src, tmp_path, dest))
+        temp_moves.append((tmp_path, dest))
         print(f"{src} -> {dest}")
 
-    for _src, tmp_path, dest in temp_moves:
+    for tmp_path, dest in temp_moves:
         tmp_path.replace(dest)
 
+
+def main() -> int:
+    args = parse_args()
+
+    sources = [Path(f) for f in args.files]
+    check_sources_exist(sources)
+
+    destinations = build_destinations(sources, args.pattern, args.start)
+    check_conflicts(sources, destinations, force=args.force)
+
+    if args.sandbox:
+        for src, dest in zip(sources, destinations, strict=True):
+            if src != dest:
+                print(f"{src} -> {dest} (sandbox, not moved)")
+        return 0
+
+    rename_all(sources, destinations)
     return 0
 
 
