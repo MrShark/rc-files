@@ -20,6 +20,13 @@ The guidelines below apply to all files here.
   potential bugs.
 - Never add noqa suppressions. Leave that for the user to decide.
 
+## Repository structure and installation
+
+- `bin/` contains standalone tools, currently Python scripts and a shell script. Prefer adding each tool directly in this directory; the installer does not traverse subdirectories.
+- `install.py` links each file directly inside `bin/` into `~/bin/`, removing its final suffix (for example, `foo.py` becomes `~/bin/foo`). It does not set or change executable permissions.
+- The top-level `bashrc` and `passwdwords` files are linked to `~/.bashrc` and `~/.passwdwords`. Installer overwrite options and behaviour are defined in `install.py`.
+- Run `./install.py` to install the files. `pyproject.toml` specifies Python ≥ 3.12, Poetry non-package mode, and Ruff as a development dependency; scripts must not add runtime third-party dependencies.
+
 ## Python version
 
 Target **Python 3.12 or newer**. Use modern syntax freely:
