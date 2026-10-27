@@ -1,0 +1,44 @@
+#:schema https://www.schemastore.org/prek.json
+
+[[repos]]
+repo = "builtin"
+hooks = [
+    { id = "trailing-whitespace" },
+    { id = "pretty-format-json" },
+    { id = "mixed-line-ending" },
+    { id = "fix-byte-order-marker" },
+    { id = "end-of-file-fixer" },
+    { id = "detect-private-key" },
+    { id = "check-yaml" },
+    { id = "check-xml" },
+    { id = "check-toml" },
+    { id = "check-merge-conflict" },
+    { id = "check-json" },
+    { id = "check-shebang-scripts-are-executable" },
+    { id = "check-executables-have-shebangs" },
+    { id = "check-added-large-files" },
+]
+
+[[repos]]
+repo = "https://github.com/astral-sh/ruff-pre-commit"
+rev = "v0.17.3"
+hooks = [
+    { id = "ruff-check" },
+    { id = "ruff-format", args = ["--check"] },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "pytest"
+name = "pytest"
+entry = "poetry run pytest"
+language = "system"
+pass_filenames = false
+always_run = true
+
+[[repos]]
+repo = "https://github.com/compilerla/conventional-pre-commit"
+rev = "v4.4.0"
+hooks = [{ id = "conventional-pre-commit", stages = ["commit-msg"] }]

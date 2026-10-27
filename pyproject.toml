@@ -30,4 +30,8 @@ ignore = [
 ]
 
 [dependency-groups]
-dev = ["ruff", "pytest (>=9.1.1,<10.0.0)"]
+dev = [
+    "ruff",                     # Linting
+    "pytest (>=9.1.1,<10.0.0)", # Test runner
+    "prek (>=0.5.7,<0.6.0)",    # Pre-commit hooks manager
+]
