@@ -28,13 +28,13 @@ def get_cert_expiry(hostname: str, *, port: int = 443):
             expiry = datetime.datetime.strptime(
                 not_after,
                 "%b %d %H:%M:%S %Y %Z",
-            ).replace(tzinfo=datetime.timezone.utc)
+            ).replace(tzinfo=datetime.UTC)
     except ssl.SSLError as e:
         return None, None, False, str(e)
     except Exception as e:  # noqa: BLE001
         return None, None, None, str(e)
 
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(datetime.UTC)
     days_left = (expiry - now).days
     return days_left, not_after, True, None
 

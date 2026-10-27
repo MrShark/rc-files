@@ -14,13 +14,12 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from abc import ABC, abstractmethod
 from datetime import date
 from functools import cached_property
 from pathlib import Path
 from typing import ClassVar
-
-import tomllib
 
 # ---------------------------------------------------------------------------
 # Helpers

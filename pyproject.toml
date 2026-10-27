@@ -21,6 +21,7 @@ ignore = [
     "COM812",  # trailing comma not required
     "ANN",     # type annotations are optional
     "CPY001",  # Do not require copyright notices in files
+    "ICN001",  # Don't require aliases in imports
 ]
 
 [dependency-groups]
