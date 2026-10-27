@@ -24,5 +24,10 @@ ignore = [
     "ICN001",  # Don't require aliases in imports
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    "S101", # asserts are OK in pytest tests
+]
+
 [dependency-groups]
-dev = ["ruff"]
+dev = ["ruff", "pytest (>=9.1.1,<10.0.0)"]
