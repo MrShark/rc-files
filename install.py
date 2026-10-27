@@ -3,7 +3,7 @@
 RC-file installer.
 
 Creates symlinks from the bundled dot-files to the user's home directory,
-recursively installing any executable scripts found in the `bin/` directory.
+installing any executable scripts directly inside the `bin/` directory.
 """
 
 from __future__ import annotations
@@ -22,7 +22,7 @@ DOTFILES: tuple[str, ...] = (
     "passwdwords",
 )
 
-# Directories to install recursively
+# Directories containing scripts to install
 BINDIRS: tuple[str, ...] = ("bin",)
 
 
@@ -79,11 +79,11 @@ def main() -> None:
             force_file=args.force_file,
         )
 
-    # Install executable scripts recursively
+    # Install executable scripts directly inside each directory
     for bindir in BINDIRS:
         src_root: Path = RC_FILE_DIR / bindir
         dst_root: Path = HOME / "bin"
-        for path in src_root.rglob("*"):
+        for path in src_root.iterdir():
             if not path.is_file():
                 continue
             relative = path.relative_to(src_root)
