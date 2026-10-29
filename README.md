@@ -68,11 +68,17 @@ non-zero if any SSH check fails. High usage alone does not change the exit statu
 ```sh
 indirs 'git status --short' project-a project-b
 indirs --parallel=2 --no-shell 'git status --short' project-a project-b
+indirs --if-exists pyproject.toml --if-exists poetry.lock 'poetry check' project-a project-b
 ```
 
 - Default: sequential execution through the shell; quote the command to defer
   expansion until it runs inside each directory.
 - `--no-shell`: splits the string with `shlex`, without shell expansion or pipes.
+- `--if-exists FILE`: repeat to require **all** specified paths to exist before
+  running in a directory. Relative paths are checked against each workdir, with
+  no glob expansion; existing directories also count. Valid workdirs missing any
+  required path are silently skipped without a header or failure status. Invalid
+  workdirs still cause a reported failure.
 - `--header`: prints the directory argument exactly as supplied (including `./`
   and trailing slashes) in green, followed by a colour reset, before its command
   output. Sequential headers are flushed before starting the command.

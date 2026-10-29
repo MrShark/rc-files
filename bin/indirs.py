@@ -2,7 +2,7 @@
 """
 Run one command in each of the specified directories.
 
-Usage: indirs [--header] [--no-shell] [--parallel][=N] <command> <dir> ...
+Usage: indirs [--header] [--no-shell] [--parallel][=N] [--if-exists FILE] ... <command> <dir> ...
 """
 
 import argparse
@@ -69,6 +69,13 @@ def create_parser() -> argparse.ArgumentParser:
         type=positive_int,
         help=argparse.SUPPRESS,
     )
+    parser.add_argument(
+        "--if-exists",
+        action="append",
+        default=[],
+        metavar="FILE",
+        help="run only if every specified path exists, relative to each directory",
+    )
     parser.add_argument("command", help="command string to run in each directory")
     parser.add_argument("dirs", nargs="+", help="directories to process")
     return parser
@@ -122,6 +129,19 @@ def run_parallel(directories, command, argv, workers, *, header):
     return failed
 
 
+def select_directories(items, required_paths):
+    directories = []
+    failed = False
+    for item in items:
+        directory = Path(item)
+        if not directory.is_dir():
+            print(f"indirs: not a directory: {directory}", file=sys.stderr)
+            failed = True
+        elif all((directory / required).exists() for required in required_paths):
+            directories.append((directory, item))
+    return directories, failed
+
+
 def main() -> int:
     parser = create_parser()
     args = parser.parse_args(normalize_parallel_args(sys.argv[1:]))
@@ -135,15 +155,7 @@ def main() -> int:
         if not command_args:
             parser.error("command must not be empty when using --no-shell")
 
-    directories = []
-    failed = False
-    for item in args.dirs:
-        directory = Path(item)
-        if not directory.is_dir():
-            print(f"indirs: not a directory: {directory}", file=sys.stderr)
-            failed = True
-        else:
-            directories.append((directory, item))
+    directories, failed = select_directories(args.dirs, args.if_exists)
 
     workers = args.worker_count
     parallel = args.parallel or workers is not None

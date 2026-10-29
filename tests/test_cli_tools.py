@@ -597,3 +597,175 @@ def test_indirs_header_preserves_no_shell_validation(sandbox, command):
     assert_clean_failure(result, "command")
     assert result.returncode == 2
     assert result.stdout == ""
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+@pytest.mark.parametrize("no_shell", [[], ["--no-shell"]])
+def test_indirs_if_exists_requires_all_relative_paths_per_directory(
+    sandbox, directories, options, no_shell
+):
+    """Require every repeated nested path in each cwd, not the invocation cwd."""
+    for directory in [sandbox.root, *directories]:
+        (directory / "nested").mkdir()
+    for directory in [sandbox.root, directories[0], directories[1]]:
+        (directory / "nested" / "first").touch()
+    for directory in [sandbox.root, directories[0], directories[2]]:
+        (directory / "nested" / "second").touch()
+    command = shlex.join(
+        [
+            sys.executable,
+            "-c",
+            "import pathlib; pathlib.Path('ran').touch(); print(pathlib.Path.cwd().name)",
+        ]
+    )
+    result = sandbox.cli(
+        "indirs",
+        *options,
+        *no_shell,
+        "--header",
+        "--if-exists",
+        "nested/first",
+        "--if-exists",
+        "nested/second",
+        command,
+        "./second/",
+        "./first//",
+        "./third/",
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "\x1b[32m./first//\x1b[0m\nfirst\n"
+    assert result.stderr == ""
+    assert [(directory / "ran").exists() for directory in directories] == [
+        True,
+        False,
+        False,
+    ]
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+def test_indirs_if_exists_all_skipped_never_launches(
+    sandbox, indirs, directories, options
+):
+    """A fully filtered valid directory list is a silent success without launches."""
+    with mock.patch.object(indirs, "run_command") as run:
+        result, stdout, stderr = sandbox.main(
+            indirs,
+            *options,
+            "--header",
+            "--no-shell",
+            "--if-exists",
+            "missing",
+            "./missing-executable",
+            *directories,
+        )
+    assert result == 0
+    assert stdout == ""
+    assert stderr == ""
+    run.assert_not_called()
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+def test_indirs_if_exists_uses_exists_without_glob_expansion(
+    sandbox, directories, options
+):
+    """Accept directory entries and live links but do not expand required globs."""
+    for directory in directories:
+        (directory / "nested").mkdir()
+        (directory / "link").symlink_to("nested", target_is_directory=True)
+        (directory / "matches.txt").touch()
+    (directories[0] / "*.txt").touch()
+    (directories[2] / "link").unlink()
+    (directories[2] / "link").symlink_to("missing")
+    (directories[2] / "*.txt").touch()
+    command = shlex.join([sys.executable, "-c", "print('ran')"])
+    result = sandbox.cli(
+        "indirs",
+        *options,
+        "--if-exists",
+        "nested",
+        "--if-exists",
+        "link",
+        "--if-exists",
+        "*.txt",
+        command,
+        *directories,
+    )
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "ran\n"
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+@pytest.mark.parametrize("launch_failure", [False, True])
+def test_indirs_if_exists_preserves_errors_and_continues(
+    sandbox, directories, options, launch_failure
+):
+    """Keep invalid-directory and command failures while silently skipping others."""
+    for directory in directories[::2]:
+        (directory / "required").touch()
+    not_directory = sandbox.root / "not-directory"
+    not_directory.touch()
+    command = (
+        "./missing-executable"
+        if launch_failure
+        else shlex.join(
+            [
+                sys.executable,
+                "-c",
+                "import pathlib, sys; name = pathlib.Path.cwd().name; print(name); sys.exit(name == 'first')",
+            ]
+        )
+    )
+    result = sandbox.cli(
+        "indirs",
+        *options,
+        "--no-shell",
+        "--header",
+        "--if-exists",
+        "required",
+        command,
+        "missing-directory",
+        not_directory,
+        "./first/",
+        "./second/",
+        "./third/",
+    )
+    assert_clean_failure(result, "not a directory: missing-directory")
+    assert f"not a directory: {not_directory}" in result.stderr
+    assert result.returncode == 1
+    assert "second" not in result.stdout + result.stderr
+    if launch_failure:
+        assert result.stdout == "\x1b[32m./first/\x1b[0m\n\x1b[32m./third/\x1b[0m\n"
+        assert "could not run command in first:" in result.stderr
+        assert "could not run command in third:" in result.stderr
+    else:
+        assert result.stdout == (
+            "\x1b[32m./first/\x1b[0m\nfirst\n\x1b[32m./third/\x1b[0m\nthird\n"
+        )
+        assert "command failed in first (exit status 1)" in result.stderr
+
+
+@pytest.mark.parametrize(
+    ("options", "command", "error"),
+    [
+        (["--parallel=0"], "unused", "worker count must be a positive integer"),
+        (["--no-shell"], "", "command must not be empty"),
+        (["--no-shell"], "'unclosed", "invalid command string"),
+    ],
+)
+def test_indirs_if_exists_does_not_bypass_validation(sandbox, options, command, error):
+    """Validate options and command syntax even when all directories would skip."""
+    result = sandbox.cli(
+        "indirs", *options, "--header", "--if-exists", "missing", command, "."
+    )
+    assert_clean_failure(result, error)
+    assert result.returncode == 2
+    assert result.stdout == ""
+
+
+def test_indirs_if_exists_requires_a_value(sandbox):
+    """Require an argument for the filter option."""
+    result = sandbox.cli("indirs", "unused", ".", "--if-exists")
+    assert_clean_failure(result, "expected one argument")
+    assert result.returncode == 2
+    assert result.stdout == ""
