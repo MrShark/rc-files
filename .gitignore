@@ -3,3 +3,4 @@
 .vscode/
 MYTOKEN
 .direnv/
+.coverage*
