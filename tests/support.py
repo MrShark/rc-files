@@ -62,6 +62,14 @@ class Sandbox:
             result = 0
         return result, stdout.getvalue(), stderr.getvalue()
 
+    def invoke(self, name, *args, input_text=""):
+        """Exercise a CLI contract in-process without interpreter startup costs."""
+        module = self.load_script(name)
+        stdin = io.TextIOWrapper(io.BytesIO(input_text.encode()), encoding="utf-8")
+        with stdin, mock.patch.object(sys, "stdin", stdin):
+            status, stdout, stderr = self.main(module, *args)
+        return subprocess.CompletedProcess(args, status, stdout, stderr)
+
 
 def assert_clean_failure(result, fragment):
     """Require a failed CLI result with a useful error and no traceback."""

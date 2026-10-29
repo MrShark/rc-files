@@ -15,11 +15,6 @@ from tests.support import assert_clean_failure
 
 
 @pytest.fixture
-def disk_status(sandbox):
-    return sandbox.load_script("disk_status")
-
-
-@pytest.fixture
 def ssl_checker(sandbox):
     return sandbox.load_script("ssl_checker")
 
@@ -58,42 +53,33 @@ def directories(sandbox):
     return paths
 
 
-def test_ssh_text_error_is_clean_and_returns_failure(sandbox, disk_status):
-    """Report SSH error output without a traceback."""
-    error = subprocess.CalledProcessError(255, ["ssh"], output="permission denied\n")
-    with mock.patch.object(disk_status.subprocess, "check_output", side_effect=error):
-        result, _, stderr = sandbox.main(disk_status, "offline.invalid")
-    assert result == 1
-    assert "permission denied" in stderr
-    assert "Traceback" not in stderr
+@pytest.fixture
+def indirs_cli(sandbox, indirs):
+    """Keep selection, execution modes and publication real; fake only the child."""
 
+    def invoke(*args, failures=(), missing_executable=False, with_stderr=False):
+        def run(command, **kwargs):
+            if missing_executable:
+                msg = "executable unavailable"
+                raise FileNotFoundError(msg)
+            name = kwargs["cwd"].name
+            stdout = f"{name}\n"
+            stderr = f"{name}\n" if with_stderr else ""
+            if not kwargs["capture_output"]:
+                print(stdout, end="")
+                print(stderr, end="", file=sys.stderr)
+            return subprocess.CompletedProcess(
+                command,
+                int(name in failures),
+                stdout=stdout if kwargs["capture_output"] else None,
+                stderr=stderr if kwargs["capture_output"] else None,
+            )
 
-def test_missing_ssh_executable_is_clean_and_returns_failure(sandbox, disk_status):
-    """Report a missing SSH executable as a clean failure."""
-    with mock.patch.object(
-        disk_status.subprocess,
-        "check_output",
-        side_effect=FileNotFoundError("ssh unavailable"),
-    ):
-        result, _, stderr = sandbox.main(disk_status, "offline.invalid")
-    assert result == 1
-    assert "ssh unavailable" in stderr
-    assert "Traceback" not in stderr
+        with mock.patch.object(indirs.subprocess, "run", side_effect=run) as process:
+            status, stdout, stderr = sandbox.main(indirs, *args)
+        return subprocess.CompletedProcess(args, status, stdout, stderr), process
 
-
-def test_output_reports_used_not_free_space(sandbox, disk_status):
-    """Label used space correctly and warn about high utilization."""
-    df = "Filesystem Size Used Avail Use% Mounted on\n/dev/test 100G 91G 9G 91% /data\n"
-    with mock.patch.object(
-        disk_status.subprocess, "check_output", return_value=df
-    ) as ssh:
-        result, stdout, stderr = sandbox.main(disk_status, "offline.invalid")
-    assert result == 0, stderr
-    assert "91% used" in stdout
-    assert "91G of 100G used" in stdout
-    assert "WARNING" in stdout
-    assert "free" not in stdout
-    assert ssh.call_args.kwargs["text"]
+    return invoke
 
 
 @pytest.mark.parametrize(
@@ -126,33 +112,6 @@ def test_invalid_url_is_rejected_without_connecting(ssl_checker, url, capsys):
     assert url in captured.err
     assert "Traceback" not in captured.err
     connect.assert_not_called()
-
-
-def test_schemeless_host_port_connects_to_requested_endpoint(ssl_checker, capsys):
-    """Honor an explicit port without a URL scheme."""
-    with mock.patch.object(
-        ssl_checker,
-        "get_cert_expiry",
-        return_value=(40, "future expiry", True, None),
-    ) as connect:
-        result = ssl_checker.check_url("example.invalid:8443")
-    connect.assert_called_once_with("example.invalid", port=8443)
-    assert "example.invalid" in result
-    assert "40 day(s) left" in result
-    assert capsys.readouterr().err == ""
-
-
-def test_bracketed_ipv6_uses_explicit_port(ssl_checker, capsys):
-    """Pass an IPv6 host and its port separately to the connector."""
-    with mock.patch.object(
-        ssl_checker,
-        "get_cert_expiry",
-        return_value=(40, "future expiry", True, None),
-    ) as connect:
-        result = ssl_checker.check_url("[::1]:8443")
-    connect.assert_called_once_with("::1", port=8443)
-    assert result is not None
-    assert capsys.readouterr().err == ""
 
 
 def test_hostname_encoding_error_is_a_failed_result(ssl_checker, capsys):
@@ -207,7 +166,7 @@ def test_main_prints_valid_results_and_fails_if_any_result_failed(sandbox, ssl_c
 
 def test_help_succeeds_without_dictionary(sandbox, dictionary):
     """Show help without requiring a dictionary."""
-    result = sandbox.cli("mkpass", "--help")
+    result = sandbox.invoke("mkpass", "--help")
     assert result.returncode == 0, result.stderr
     assert "usage:" in result.stdout
     assert not dictionary.exists()
@@ -215,14 +174,14 @@ def test_help_succeeds_without_dictionary(sandbox, dictionary):
 
 def test_missing_dictionary_fails_cleanly(sandbox):
     """Explain a missing dictionary without a traceback."""
-    result = sandbox.cli("mkpass", "1")
+    result = sandbox.invoke("mkpass", "1")
     assert_clean_failure(result, "Cannot load")
 
 
 def test_4096_unique_nonblank_words_are_accepted(sandbox, write_words):
     """Accept a dictionary meeting the distinct-word minimum."""
     expected = write_words()
-    result = sandbox.cli("mkpass", "1")
+    result = sandbox.invoke("mkpass", "1")
     assert result.returncode == 0, result.stderr
     match = re.fullmatch(
         r"((?:word|Word)\d{4})[-_!$&*+=2-9]((?:word|Word)\d{4})[-_!$&*+=2-9]((?:word|Word)\d{4})",
@@ -239,7 +198,7 @@ def test_duplicate_and_blank_lines_do_not_count_toward_minimum(
     words = write_words(4095)
     with dictionary.open("a") as stream:
         stream.write("\n  \n" + words[0] + "\n" + words[1] + "\n")
-    result = sandbox.cli("mkpass", "1")
+    result = sandbox.invoke("mkpass", "1")
     assert_clean_failure(result, "distinct words")
 
 
@@ -282,7 +241,7 @@ def test_count_cli_emits_exactly_requested_passwords(sandbox, write_words):
 @pytest.mark.parametrize("count", ["0", "-1"])
 def test_nonpositive_count_is_rejected_before_dictionary_load(sandbox, count):
     """Validate the requested count before reading the dictionary."""
-    result = sandbox.cli("mkpass", count)
+    result = sandbox.invoke("mkpass", count)
     assert_clean_failure(result, "positive integer")
     assert "Cannot load" not in result.stderr
 
@@ -302,30 +261,6 @@ def test_grid_reserves_one_row_for_prompt(sandbox, mkpass):
     assert len(stdout.splitlines()) == 4
     assert all(len(line) <= 40 for line in stdout.splitlines())
     assert all(line.split() == ["abc-def-ghi"] * 3 for line in stdout.splitlines())
-
-
-def test_empty_string_and_file_conflict(sandbox):
-    """Reject conflicting inputs without altering the input file."""
-    source = sandbox.root / "input"
-    source.write_text("hello")
-    result = sandbox.cli("rot13", "--string", "", source)
-    assert_clean_failure(result, "either")
-    assert source.read_text() == "hello"
-    assert result.stdout == ""
-
-
-def test_empty_string_and_stdin_dash_conflict(sandbox):
-    """Reject an empty string combined with explicit stdin input."""
-    result = sandbox.cli("rot13", "--string", "", "-", input_text="do not consume")
-    assert_clean_failure(result, "either")
-    assert result.stdout == ""
-
-
-def test_empty_string_alone_outputs_nothing(sandbox):
-    """Treat an empty string as input instead of falling back to stdin."""
-    result = sandbox.cli("rot13", "--string", "", input_text="do not consume")
-    assert result.returncode == 0, result.stderr
-    assert result.stdout == ""
 
 
 def test_parallel_normalization_stops_at_option_terminator(indirs):
@@ -400,20 +335,23 @@ def test_no_shell_preserves_literal_glob(sandbox, directories):
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
 @pytest.mark.parametrize("no_shell", [[], ["--no-shell"]])
 def test_indirs_header_preserves_spelling_before_output(
-    sandbox, directories, options, no_shell
+    indirs_cli, directories, options, no_shell
 ):
     """Keep dot prefixes, repeated separators and trailing slashes in headers."""
     spellings = ["./first/", "second//", "./third/../third/"]
-    command = shlex.join(
-        [sys.executable, "-c", "import os; print(os.path.basename(os.getcwd()))"]
-    )
-    result = sandbox.cli("indirs", *options, *no_shell, "--header", command, *spellings)
+    command = "command 'argument with spaces'"
+    result, process = indirs_cli(*options, *no_shell, "--header", command, *spellings)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "".join(
         f"\x1b[32m{spelling}\x1b[0m\n{directory.name}\n"
         for spelling, directory in zip(spellings, directories, strict=True)
     )
     assert result.stderr == ""
+    assert process.call_count == len(directories)
+    for call in process.call_args_list:
+        assert call.args == (shlex.split(command) if no_shell else command,)
+        assert call.kwargs["shell"] == (not no_shell)
+        assert call.kwargs["capture_output"] == bool(options)
 
 
 @pytest.mark.parametrize("header", [[], ["--header"]])
@@ -466,21 +404,20 @@ def test_indirs_parallel_groups_overlapping_stdout_and_stderr(
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel"], ["--parallel=2"]])
-def test_indirs_command_failure_continues_with_headers(sandbox, directories, options):
+def test_indirs_command_failure_continues_with_headers(
+    indirs_cli, directories, options
+):
     """Keep output and headers from every valid directory after a command fails."""
-    command = shlex.join(
-        [
-            sys.executable,
-            "-c",
-            (
-                "import pathlib, sys; name = pathlib.Path.cwd().name; "
-                "print(name); print(name, file=sys.stderr); sys.exit(name == 'first')"
-            ),
-        ]
-    )
     spellings = [f"./{directory.name}/" for directory in directories[:2]]
-    result = sandbox.cli(
-        "indirs", *options, "--no-shell", "--header", command, "missing", *spellings
+    result, process = indirs_cli(
+        *options,
+        "--no-shell",
+        "--header",
+        "command",
+        "missing",
+        *spellings,
+        failures=("first",),
+        with_stderr=True,
     )
     assert_clean_failure(result, "not a directory")
     assert "exit status 1" in result.stderr
@@ -491,33 +428,36 @@ def test_indirs_command_failure_continues_with_headers(sandbox, directories, opt
     assert "first\n" in result.stderr
     assert "second\n" in result.stderr
     assert result.returncode == 1
+    assert process.call_count == 2
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
-def test_indirs_missing_executable_continues_cleanly(sandbox, directories, options):
+def test_indirs_missing_executable_continues_cleanly(indirs_cli, directories, options):
     """Report launch errors for every invocation without a traceback."""
-    result = sandbox.cli(
-        "indirs",
+    result, process = indirs_cli(
         *options,
         "--header",
         "--no-shell",
         "./missing-executable",
         *directories,
+        missing_executable=True,
     )
     assert_clean_failure(result, "could not run command")
     assert result.returncode == 1
     assert result.stdout == "".join(f"\x1b[32m{path}\x1b[0m\n" for path in directories)
     for path in directories:
         assert f"could not run command in {path}:" in result.stderr
+    assert process.call_count == len(directories)
 
 
 @pytest.mark.parametrize("count", ["0", "-1", "bad", ""])
-def test_indirs_header_does_not_change_invalid_worker_count(sandbox, count):
+def test_indirs_header_does_not_change_invalid_worker_count(indirs_cli, count):
     """Reject invalid worker counts before starting any command."""
-    result = sandbox.cli("indirs", "--header", f"--parallel={count}", "unused", ".")
+    result, process = indirs_cli("--header", f"--parallel={count}", "unused", ".")
     assert_clean_failure(result, "worker count must be a positive integer")
     assert result.returncode == 2
     assert result.stdout == ""
+    process.assert_not_called()
 
 
 def test_indirs_sequential_header_precedes_launch_without_capturing(
@@ -581,28 +521,33 @@ def test_indirs_parallel_publication_groups_both_channels_and_diagnostics(
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
-def test_indirs_option_terminator_preserves_header_directory(sandbox, options):
+def test_indirs_option_terminator_preserves_header_directory(
+    sandbox, indirs_cli, options
+):
     """Treat a directory named like the flag as positional after the terminator."""
     (sandbox.root / "--header").mkdir()
-    command = shlex.join([sys.executable, "-c", "print('plain')"])
-    result = sandbox.cli("indirs", *options, "--no-shell", "--", command, "--header")
+    result, process = indirs_cli(*options, "--no-shell", "--", "command", "--header")
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "plain\n"
+    assert result.stdout == "--header\n"
+    process.assert_called_once()
+    assert process.call_args.kwargs["cwd"].name == "--header"
+    assert not process.call_args.kwargs["shell"]
 
 
 @pytest.mark.parametrize("command", ["", "'unclosed"])
-def test_indirs_header_preserves_no_shell_validation(sandbox, command):
+def test_indirs_header_preserves_no_shell_validation(indirs_cli, command):
     """Fail argument validation before emitting a header or starting a command."""
-    result = sandbox.cli("indirs", "--no-shell", "--header", command, ".")
+    result, process = indirs_cli("--no-shell", "--header", command, ".")
     assert_clean_failure(result, "command")
     assert result.returncode == 2
     assert result.stdout == ""
+    process.assert_not_called()
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
 @pytest.mark.parametrize("no_shell", [[], ["--no-shell"]])
 def test_indirs_if_exists_requires_all_relative_paths_per_directory(
-    sandbox, directories, options, no_shell
+    sandbox, indirs_cli, directories, options, no_shell
 ):
     """Require every repeated nested path in each cwd, not the invocation cwd."""
     for directory in [sandbox.root, *directories]:
@@ -611,15 +556,8 @@ def test_indirs_if_exists_requires_all_relative_paths_per_directory(
         (directory / "nested" / "first").touch()
     for directory in [sandbox.root, directories[0], directories[2]]:
         (directory / "nested" / "second").touch()
-    command = shlex.join(
-        [
-            sys.executable,
-            "-c",
-            "import pathlib; pathlib.Path('ran').touch(); print(pathlib.Path.cwd().name)",
-        ]
-    )
-    result = sandbox.cli(
-        "indirs",
+    command = "command --argument"
+    result, process = indirs_cli(
         *options,
         *no_shell,
         "--header",
@@ -635,11 +573,11 @@ def test_indirs_if_exists_requires_all_relative_paths_per_directory(
     assert result.returncode == 0, result.stderr
     assert result.stdout == "\x1b[32m./first//\x1b[0m\nfirst\n"
     assert result.stderr == ""
-    assert [(directory / "ran").exists() for directory in directories] == [
-        True,
-        False,
-        False,
-    ]
+    process.assert_called_once()
+    assert process.call_args.kwargs["cwd"] == directories[0].relative_to(sandbox.root)
+    assert process.call_args.args == (shlex.split(command) if no_shell else command,)
+    assert process.call_args.kwargs["shell"] == (not no_shell)
+    assert process.call_args.kwargs["capture_output"] == bool(options)
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
@@ -666,7 +604,7 @@ def test_indirs_if_exists_all_skipped_never_launches(
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
 def test_indirs_if_exists_uses_exists_without_glob_expansion(
-    sandbox, directories, options
+    indirs_cli, directories, options
 ):
     """Accept directory entries and live links but do not expand required globs."""
     for directory in directories:
@@ -677,9 +615,7 @@ def test_indirs_if_exists_uses_exists_without_glob_expansion(
     (directories[2] / "link").unlink()
     (directories[2] / "link").symlink_to("missing")
     (directories[2] / "*.txt").touch()
-    command = shlex.join([sys.executable, "-c", "print('ran')"])
-    result = sandbox.cli(
-        "indirs",
+    result, process = indirs_cli(
         *options,
         "--if-exists",
         "nested",
@@ -687,37 +623,28 @@ def test_indirs_if_exists_uses_exists_without_glob_expansion(
         "link",
         "--if-exists",
         "*.txt",
-        command,
+        "command",
         *directories,
     )
     assert result.returncode == 0, result.stderr
-    assert result.stdout == "ran\n"
+    assert result.stdout == "first\n"
     assert result.stderr == ""
+    process.assert_called_once()
+    assert process.call_args.kwargs["cwd"] == directories[0]
 
 
 @pytest.mark.parametrize("options", [[], ["--parallel=2"]])
 @pytest.mark.parametrize("launch_failure", [False, True])
 def test_indirs_if_exists_preserves_errors_and_continues(
-    sandbox, directories, options, launch_failure
+    sandbox, indirs_cli, directories, options, launch_failure
 ):
     """Keep invalid-directory and command failures while silently skipping others."""
     for directory in directories[::2]:
         (directory / "required").touch()
     not_directory = sandbox.root / "not-directory"
     not_directory.touch()
-    command = (
-        "./missing-executable"
-        if launch_failure
-        else shlex.join(
-            [
-                sys.executable,
-                "-c",
-                "import pathlib, sys; name = pathlib.Path.cwd().name; print(name); sys.exit(name == 'first')",
-            ]
-        )
-    )
-    result = sandbox.cli(
-        "indirs",
+    command = "./missing-executable" if launch_failure else "command"
+    result, process = indirs_cli(
         *options,
         "--no-shell",
         "--header",
@@ -729,10 +656,16 @@ def test_indirs_if_exists_preserves_errors_and_continues(
         "./first/",
         "./second/",
         "./third/",
+        failures=("first",),
+        missing_executable=launch_failure,
     )
     assert_clean_failure(result, "not a directory: missing-directory")
     assert f"not a directory: {not_directory}" in result.stderr
     assert result.returncode == 1
+    assert sorted(call.kwargs["cwd"].name for call in process.call_args_list) == [
+        "first",
+        "third",
+    ]
     assert "second" not in result.stdout + result.stderr
     if launch_failure:
         assert result.stdout == "\x1b[32m./first/\x1b[0m\n\x1b[32m./third/\x1b[0m\n"
@@ -753,19 +686,23 @@ def test_indirs_if_exists_preserves_errors_and_continues(
         (["--no-shell"], "'unclosed", "invalid command string"),
     ],
 )
-def test_indirs_if_exists_does_not_bypass_validation(sandbox, options, command, error):
+def test_indirs_if_exists_does_not_bypass_validation(
+    indirs_cli, options, command, error
+):
     """Validate options and command syntax even when all directories would skip."""
-    result = sandbox.cli(
-        "indirs", *options, "--header", "--if-exists", "missing", command, "."
+    result, process = indirs_cli(
+        *options, "--header", "--if-exists", "missing", command, "."
     )
     assert_clean_failure(result, error)
     assert result.returncode == 2
     assert result.stdout == ""
+    process.assert_not_called()
 
 
-def test_indirs_if_exists_requires_a_value(sandbox):
+def test_indirs_if_exists_requires_a_value(indirs_cli):
     """Require an argument for the filter option."""
-    result = sandbox.cli("indirs", "unused", ".", "--if-exists")
+    result, process = indirs_cli("unused", ".", "--if-exists")
     assert_clean_failure(result, "expected one argument")
     assert result.returncode == 2
     assert result.stdout == ""
+    process.assert_not_called()

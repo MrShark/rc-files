@@ -74,7 +74,7 @@ def test_overlapping_cli_renames_preserve_both_sources(
 ):
     """Preserve a source that is also another source's destination."""
     first, second = make_file("a"), make_file("file-1")
-    result = sandbox.cli("mv_count", "-f", "-p", work / "file-{}", first, second)
+    result = sandbox.invoke("mv_count", "-f", "-p", work / "file-{}", first, second)
     assert result.returncode == 0, result.stderr
     assert file_contents() == {"file-1": b"a", "file-2": b"file-1"}
 
@@ -82,7 +82,7 @@ def test_overlapping_cli_renames_preserve_both_sources(
 def test_self_rename_leaves_payload_untouched(sandbox, work, make_file, file_contents):
     """Leave a file intact when its destination equals its source."""
     source = make_file("file-1")
-    result = sandbox.cli("mv_count", "-p", work / "file-{}", source)
+    result = sandbox.invoke("mv_count", "-p", work / "file-{}", source)
     assert result.returncode == 0, result.stderr
     assert file_contents() == {"file-1": b"file-1"}
 
@@ -201,7 +201,7 @@ def test_destination_directory_is_rejected_even_with_force(
 def test_sandbox_cli_does_not_mutate_files(sandbox, work, make_file, file_contents):
     """Describe sandbox renames without changing source files."""
     source = make_file("a")
-    result = sandbox.cli("mv_count", "-s", "-p", work / "file-{}", source)
+    result = sandbox.invoke("mv_count", "-s", "-p", work / "file-{}", source)
     assert result.returncode == 0, result.stderr
     assert "sandbox" in result.stdout
     assert file_contents() == {"a": b"a"}
@@ -256,7 +256,7 @@ def test_force_success_overwrites_only_unrelated_destination(
 ):
     """Replace an unrelated destination with the requested source payload."""
     source, destination = make_file("a"), make_file("file-1", b"old destination")
-    result = sandbox.cli("mv_count", "-f", "-p", work / "file-{}", source)
+    result = sandbox.invoke("mv_count", "-f", "-p", work / "file-{}", source)
     assert result.returncode == 0, result.stderr
     assert file_contents() == {destination.name: b"a"}
 
