@@ -22,11 +22,11 @@ shopt -s checkwinsize
 
 
 # User specific PATH
-if ! [[ "$PATH" == *"$HOME/.local/bin"* ]]
+if ! [[ ":$PATH:" == *":$HOME/.local/bin:"* ]]
 then
     PATH="$HOME/.local/bin:$PATH"
 fi
-if ! [[ "$PATH" == *"$HOME/bin:"* ]]
+if ! [[ ":$PATH:" == *":$HOME/bin:"* ]]
 then
     PATH="$HOME/bin:$PATH"
 fi
@@ -63,16 +63,21 @@ fi
 
 # Deduplicate $PATH entries in-place
 
-IFS=':' read -ra dirs <<< "$PATH"
-declare -A seen
-new_path=""
-for dir in "${dirs[@]}"; do
+_deduplicate_path() {
+  local -a dirs
+  local -A seen=()
+  local dir new_path=""
+  IFS=':' read -ra dirs <<< "$PATH"
+  for dir in "${dirs[@]}"; do
     if [[ -n "$dir" && -z "${seen[$dir]}" ]]; then
-        seen["$dir"]=1
-        new_path+="${dir}:"
+      seen["$dir"]=1
+      new_path+="${dir}:"
     fi
-done
-export PATH="${new_path%:}"
+  done
+  export PATH="${new_path%:}"
+}
+_deduplicate_path
+unset -f _deduplicate_path
 
 export EDITOR=vim
 alias ls="ls --color=auto"

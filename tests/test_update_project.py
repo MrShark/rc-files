@@ -26,11 +26,6 @@ def diff_result(status):
 
 
 # These public methods call a missing _find_config in the original script.
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="HookUpdater.is_applicable calls nonexistent _find_config",
-)
 def test_no_config_is_not_applicable_and_has_no_state(hook_project):
     """Treat an absent hook config as inapplicable with empty state."""
     updater = hook_project.HookUpdater()
@@ -39,11 +34,6 @@ def test_no_config_is_not_applicable_and_has_no_state(hook_project):
     assert updater.tracked_files() == []
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="HookUpdater.update runs the external updater even without a config",
-)
 def test_no_config_update_is_rejected_without_running_commands(hook_project):
     """Reject updates without a hook config before running commands."""
     updater = hook_project.HookUpdater()
@@ -75,11 +65,6 @@ def test_no_config_update_is_rejected_without_running_commands(hook_project):
         ),
     ],
 )
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="HookUpdater public discovery/parsing calls nonexistent _find_config",
-)
 def test_hook_config_is_discovered_and_parsed(sandbox, hook_project, name, content):
     """Discover supported configs, capture revisions, and update explicitly."""
     config = sandbox.root / name
@@ -91,14 +76,9 @@ def test_hook_config_is_discovered_and_parsed(sandbox, hook_project, name, conte
     assert updater.tracked_files() == [name]
     with mock.patch.object(hook_project, "run") as run:
         updater.update()
-    run.assert_called_once_with(["prek", "auto-update"])
+    run.assert_called_once_with(["prek", "auto-update", "--config", str(config)])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="HookUpdater.tracked_files calls nonexistent _find_config",
-)
 def test_config_discovery_prefers_prek_toml(sandbox, hook_project):
     """Prefer prek TOML when all supported config names are present."""
     for name in ("prek.toml", ".pre-commit-config.yaml", ".pre-commit-config.yml"):
@@ -117,14 +97,9 @@ def test_pre_commit_fallback_uses_its_own_subcommand(sandbox, hook_project):
     assert updater.is_available()
     with mock.patch.object(hook_project, "run") as run:
         updater.update()
-    run.assert_called_once_with(["pre-commit", "autoupdate"])
+    run.assert_called_once_with(["pre-commit", "autoupdate", "--config", str(config)])
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="HookUpdater availability accepts pre-commit for an unsupported TOML config",
-)
 def test_pre_commit_alone_cannot_update_toml(sandbox, hook_project):
     """Keep TOML configs unavailable when only pre-commit is installed."""
     (sandbox.root / "prek.toml").write_text("")
@@ -145,6 +120,7 @@ def test_git_diff_zero_means_no_staged_changes(update_project):
         ["git", "diff", "--cached", "--quiet"],
         check=False,
         capture_output=True,
+        text=True,
     )
 
 
@@ -156,11 +132,6 @@ def test_git_diff_one_means_staged_changes(update_project):
         assert update_project.has_staged_changes()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="has_staged_changes treats Git status 128 as ordinary staged changes",
-)
 def test_git_diff_greater_than_one_preserves_failure_details(update_project):
     """Preserve Git's error status and diagnostic for actual failures."""
     with (
@@ -174,11 +145,6 @@ def test_git_diff_greater_than_one_preserves_failure_details(update_project):
     assert "git diff detail" in caught.value.stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="create_branch misreports every checkout error as an existing branch and drops stderr",
-)
 def test_checkout_unrelated_failure_preserves_message_and_stops_updates(
     sandbox, update_project
 ):
@@ -208,11 +174,6 @@ def test_checkout_unrelated_failure_preserves_message_and_stops_updates(
     update.assert_not_called()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="find_tools reaches HookUpdater.is_applicable calling nonexistent _find_config",
-)
 def test_no_config_workflow_returns_failure_without_git(
     sandbox, update_project, monkeypatch
 ):

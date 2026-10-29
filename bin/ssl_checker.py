@@ -15,7 +15,7 @@ def get_cert_expiry(hostname: str, *, port: int = 443):
     """
     Connect to hostname:port and check the certificate.
 
-    returns a tuple (days_left, not_after_str, chain_valid, error_string, cert_information).
+    Returns (days_left, not_after_str, chain_valid, error_string).
     """
     try:
         context = ssl.create_default_context()
@@ -31,7 +31,7 @@ def get_cert_expiry(hostname: str, *, port: int = 443):
             ).replace(tzinfo=datetime.UTC)
     except ssl.SSLError as e:
         return None, None, False, str(e)
-    except Exception as e:  # noqa: BLE001
+    except (OSError, ValueError, KeyError, UnicodeError) as e:
         return None, None, None, str(e)
 
     now = datetime.datetime.now(datetime.UTC)
@@ -70,32 +70,39 @@ def format_status(days_left: int) -> str:
     return colorize(base, "green")
 
 
-def fmt_list(tuples) -> str:
-    return ", ".join(f"{k}={v}" for k, v in tuples)
-
-
 def check_url(url: str) -> str | None:
-    parsed = urlparse(url)
-    if not parsed.scheme:
-        parsed = urlparse(f"https://{url}")
-    hostname, port = parsed.hostname, parsed.port or 443
-    if not hostname:
-        return colorize(f"Invalid URL: {url}", "red")
+    try:
+        parsed = urlparse(
+            url if "://" in url or url.startswith("//") else f"https://{url}"
+        )
+        hostname = parsed.hostname
+        port = parsed.port if parsed.port is not None else 443
+    except ValueError as exc:
+        print(colorize(f"Invalid URL: {url}: {exc}", "red"), file=sys.stderr)
+        return None
+    if not hostname or not 1 <= port <= 65535:
+        print(
+            colorize(f"Invalid URL: {url}: missing hostname or invalid port", "red"),
+            file=sys.stderr,
+        )
+        return None
 
     days_left, not_after, chain_valid, err = get_cert_expiry(
         hostname,
         port=port,
     )
     if err:
-        return colorize(f"{hostname:30} ERROR: {err}", "red")
+        print(colorize(f"{hostname:30} ERROR: {err}", "red"), file=sys.stderr)
+        return None
 
     if not chain_valid:
-        return colorize(f"{hostname:30} INVALID CHAIN", "red")
+        print(colorize(f"{hostname:30} INVALID CHAIN", "red"), file=sys.stderr)
+        return None
 
     return f"{hostname:30} {format_status(days_left)}  (Expires: {not_after})"
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser(description="Check SSL/TLS certificate expiry.")
     parser.add_argument("urls", nargs="*", help="URLs to check")
     parser.add_argument(
@@ -109,10 +116,14 @@ def main() -> None:
     if args.urls:
         urls = args.urls
     else:
-        urls = load_urls_from_cfg()
+        try:
+            urls = load_urls_from_cfg()
+        except (OSError, UnicodeError) as exc:
+            print(f"Cannot load SSL checker URLs: {exc}", file=sys.stderr)
+            return 1
 
     if not urls:
-        parser.print_usage()
+        parser.print_usage(file=sys.stderr)
         sys.exit(1)
 
     if args.sort:
@@ -120,8 +131,11 @@ def main() -> None:
 
     with Pool() as pool:
         results = pool.map(check_url, urls)
-    print("\n".join(results))
+    for result in results:
+        if result is not None:
+            print(result)
+    return int(any(result is None for result in results))
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

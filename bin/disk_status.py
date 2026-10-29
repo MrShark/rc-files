@@ -26,7 +26,7 @@ def read_config() -> list:
     return servers
 
 
-def run_df(hostspec: str) -> list:
+def run_df(hostspec: str) -> list | None:
     cmd = [
         "ssh",
         "-o",
@@ -38,12 +38,13 @@ def run_df(hostspec: str) -> list:
         out = subprocess.check_output(cmd, stderr=subprocess.STDOUT, text=True)  # noqa: S603
     except subprocess.CalledProcessError as e:
         print(
-            RED
-            + f"SSH failed for {hostspec}: "
-            + e.output.decode(errors="replace").rstrip()
-            + RESET
+            RED + f"SSH failed for {hostspec}: " + (e.output or "").rstrip() + RESET,
+            file=sys.stderr,
         )
-        return []
+        return None
+    except OSError as exc:
+        print(f"SSH failed for {hostspec}: {exc}", file=sys.stderr)
+        return None
     rows = []
     for line in out.splitlines()[1:]:
         parts = line.split(None, 5)
@@ -60,32 +61,42 @@ def run_df(hostspec: str) -> list:
     return rows
 
 
-def main() -> None:
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "hosts", nargs="*", help="user@host entries (omit to use ~/.disk_status)"
     )
     args = parser.parse_args()
 
-    hosts = args.hosts or read_config()
+    try:
+        hosts = args.hosts or read_config()
+    except (OSError, UnicodeError) as exc:
+        print(f"Cannot load {CONFIG_FILE}: {exc}", file=sys.stderr)
+        return 1
     if not hosts:
         sys.exit("No hosts given and none found in " + str(CONFIG_FILE))
 
+    failed = False
     for hostspec in hosts:
         print(BLACK + f"\n--- {hostspec} ---" + RESET)
-        for r in run_df(hostspec):
+        rows = run_df(hostspec)
+        if rows is None:
+            failed = True
+            continue
+        for r in rows:
             col = GREEN if r["use_pct"] <= WARN_THRESHOLD else RED
             warning = ""
             if r["use_pct"] > WARN_THRESHOLD:
                 warning = f"⚠  WARNING: above {WARN_THRESHOLD}%"
             print(
                 col
-                + f"{r['mount']:30} {r['use_pct']:3}% used ({r['used']} of {r['size']} free) {warning}"
+                + f"{r['mount']:30} {r['use_pct']:3}% used ({r['used']} of {r['size']} used) {warning}"
                 + RESET
             )
 
     print("\nChecks complete.")
+    return int(failed)
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

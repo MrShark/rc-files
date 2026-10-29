@@ -7,17 +7,26 @@ import sys
 from pathlib import Path
 from random import SystemRandom
 
-_words = (Path.home() / ".passwdwords").read_text("utf-8").splitlines()
-
-if len(_words) < 4096:
-    msg = "Not enough words in ~/.passwdwords (need at least 4096)."
-    raise SystemExit(msg)
-
 rnd = SystemRandom()
 
 
-def word() -> str:
-    wrd = rnd.choice(_words)
+def load_words() -> list[str]:
+    try:
+        content = (Path.home() / ".passwdwords").read_text("utf-8")
+    except (OSError, UnicodeError) as exc:
+        msg = f"Cannot load ~/.passwdwords: {exc}"
+        raise SystemExit(msg) from exc
+    words = list(
+        dict.fromkeys(w for line in content.splitlines() if (w := line.strip()))
+    )
+    if len(words) < 4096:
+        msg = "Not enough distinct words in ~/.passwdwords (need at least 4096)."
+        raise SystemExit(msg)
+    return words
+
+
+def word(words: list[str]) -> str:
+    wrd = rnd.choice(words)
     if rnd.randint(0, 1):
         return wrd
     return wrd.capitalize()
@@ -27,8 +36,8 @@ def separator() -> str:
     return rnd.choice("-_!$&*+=23456789")
 
 
-def generate_password() -> str:
-    return word() + separator() + word() + separator() + word()
+def generate_password(words: list[str]) -> str:
+    return word(words) + separator() + word(words) + separator() + word(words)
 
 
 def main() -> int:
@@ -44,11 +53,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.count is not None and args.count <= 0:
+        parser.error("count must be a positive integer")
+    words = load_words()
+
     if args.count is not None:
-        if args.count <= 0:
-            parser.error("count must be a positive integer")
         for _ in range(args.count):
-            print(generate_password())
+            print(generate_password(words))
         return 0
 
     term_width, term_height = shutil.get_terminal_size()
@@ -57,7 +68,7 @@ def main() -> int:
 
     # Passphrase length varies, so generate an oversized batch first and
     # trim it once the real column width is known.
-    batch = [generate_password() for _ in range(rows * (term_width // 10 + 1))]
+    batch = [generate_password(words) for _ in range(rows * (term_width // 10 + 1))]
 
     col_width = max(len(p) for p in batch) + 2
     columns = max(term_width // col_width, 1)

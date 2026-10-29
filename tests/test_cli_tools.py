@@ -57,11 +57,6 @@ def directories(sandbox):
     return paths
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AttributeError,
-    reason="run_df decodes text-mode SSH output as bytes",
-)
 def test_ssh_text_error_is_clean_and_returns_failure(sandbox, disk_status):
     """Report SSH error output without a traceback."""
     error = subprocess.CalledProcessError(255, ["ssh"], output="permission denied\n")
@@ -72,11 +67,6 @@ def test_ssh_text_error_is_clean_and_returns_failure(sandbox, disk_status):
     assert "Traceback" not in stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=FileNotFoundError,
-    reason="run_df does not handle a missing ssh executable",
-)
 def test_missing_ssh_executable_is_clean_and_returns_failure(sandbox, disk_status):
     """Report a missing SSH executable as a clean failure."""
     with mock.patch.object(
@@ -90,11 +80,6 @@ def test_missing_ssh_executable_is_clean_and_returns_failure(sandbox, disk_statu
     assert "Traceback" not in stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="disk_status labels used bytes as free space",
-)
 def test_output_reports_used_not_free_space(sandbox, disk_status):
     """Label used space correctly and warn about high utilization."""
     df = "Filesystem Size Used Avail Use% Mounted on\n/dev/test 100G 91G 9G 91% /data\n"
@@ -117,47 +102,31 @@ def test_output_reports_used_not_free_space(sandbox, disk_status):
         pytest.param(
             "https://example.invalid:bad",
             id="nonnumeric-port",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="check_url lets nonnumeric port parsing errors escape",
-            ),
         ),
         pytest.param(
             "https://example.invalid:65536",
             id="out-of-range-port",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="check_url lets out-of-range port parsing errors escape",
-            ),
         ),
         pytest.param(
             "https://[::1",
             id="malformed-ipv6",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="check_url lets malformed IPv6 parsing errors escape",
-            ),
         ),
         pytest.param("example.invalid:0", id="port-zero"),
     ],
 )
-def test_invalid_url_is_rejected_without_connecting(ssl_checker, url):
+def test_invalid_url_is_rejected_without_connecting(ssl_checker, url, capsys):
     """Reject invalid URLs before opening a connection."""
     with mock.patch.object(ssl_checker, "get_cert_expiry") as connect:
         result = ssl_checker.check_url(url)
-    assert "Invalid URL" in result
-    assert url in result
+    assert result is None
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Invalid URL" in captured.err
+    assert url in captured.err
+    assert "Traceback" not in captured.err
     connect.assert_not_called()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="urlparse treats a schemeless host:port as a scheme",
-)
 def test_schemeless_host_port_connects_to_requested_endpoint(ssl_checker, capsys):
     """Honor an explicit port without a URL scheme."""
     with mock.patch.object(
@@ -185,7 +154,7 @@ def test_bracketed_ipv6_uses_explicit_port(ssl_checker, capsys):
     assert capsys.readouterr().err == ""
 
 
-def test_hostname_encoding_error_is_a_failed_result(ssl_checker):
+def test_hostname_encoding_error_is_a_failed_result(ssl_checker, capsys):
     """Report hostname encoding failures without a traceback."""
     with mock.patch.object(
         ssl_checker.socket,
@@ -193,38 +162,48 @@ def test_hostname_encoding_error_is_a_failed_result(ssl_checker):
         side_effect=UnicodeError("hostname encoding error"),
     ):
         result = ssl_checker.check_url("bad-host.invalid")
-    assert "ERROR" in result
-    assert "hostname encoding error" in result
+    assert result is None
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "ERROR" in captured.err
+    assert "bad-host.invalid" in captured.err
+    assert "hostname encoding error" in captured.err
+    assert "Traceback" not in captured.err
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="ssl_checker main returns success even for invalid URLs",
-)
 def test_main_prints_valid_results_and_fails_if_any_result_failed(sandbox, ssl_checker):
     """Keep successful output while returning failure for invalid URLs."""
     pool = mock.MagicMock()
-    invalid = ssl_checker.check_url("https:///path")
-    pool.__enter__.return_value.map.return_value = ["valid certificate result", invalid]
-    with mock.patch.object(ssl_checker, "Pool", return_value=pool):
+    pool.__enter__.return_value.map.side_effect = lambda function, urls: list(
+        map(function, urls)
+    )
+    with (
+        mock.patch.object(ssl_checker, "Pool", return_value=pool),
+        mock.patch.object(
+            ssl_checker,
+            "get_cert_expiry",
+            return_value=(40, "future expiry", True, None),
+        ) as connect,
+    ):
         result, stdout, stderr = sandbox.main(
             ssl_checker, "good.invalid", "https:///path"
         )
-    assert "valid certificate result" in stdout
-    assert "Invalid URL" in stdout
-    assert stderr == ""
+    assert "good.invalid" in stdout
+    assert "40 day(s) left" in stdout
+    assert "Expires: future expiry" in stdout
+    assert len(stdout.splitlines()) == 1
+    assert "Invalid URL" not in stdout
+    assert "None" not in stdout
+    assert "Invalid URL" in stderr
+    assert "https:///path" in stderr
+    assert "Traceback" not in stderr
+    connect.assert_called_once_with("good.invalid", port=443)
     pool.__enter__.return_value.map.assert_called_once_with(
         ssl_checker.check_url, ["good.invalid", "https:///path"]
     )
     assert result == 1
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mkpass reads its dictionary before parsing --help",
-)
 def test_help_succeeds_without_dictionary(sandbox, dictionary):
     """Show help without requiring a dictionary."""
     result = sandbox.cli("mkpass", "--help")
@@ -233,11 +212,6 @@ def test_help_succeeds_without_dictionary(sandbox, dictionary):
     assert not dictionary.exists()
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mkpass exposes FileNotFoundError for a missing dictionary",
-)
 def test_missing_dictionary_fails_cleanly(sandbox):
     """Explain a missing dictionary without a traceback."""
     result = sandbox.cli("mkpass", "1")
@@ -257,11 +231,6 @@ def test_4096_unique_nonblank_words_are_accepted(sandbox, write_words):
     assert all(word.lower() in expected for word in match.groups())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mkpass counts raw lines rather than distinct nonblank words",
-)
 def test_duplicate_and_blank_lines_do_not_count_toward_minimum(
     sandbox, dictionary, write_words
 ):
@@ -273,11 +242,6 @@ def test_duplicate_and_blank_lines_do_not_count_toward_minimum(
     assert_clean_failure(result, "distinct words")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mkpass passes duplicate, blank and unstripped dictionary lines to random selection",
-)
 def test_duplicate_and_blank_lines_are_removed_from_valid_dictionary(
     sandbox, dictionary, write_words
 ):
@@ -286,11 +250,21 @@ def test_duplicate_and_blank_lines_are_removed_from_valid_dictionary(
     with dictionary.open("a") as stream:
         stream.write("\n \n  word0000  \n")
     mkpass = sandbox.load_script("mkpass")
+    words = mkpass.load_words()
+    assert words == expected
     with mock.patch(
         "random.SystemRandom.choice", side_effect=lambda items: items[0]
     ) as choice:
-        mkpass.generate_password()
-    assert choice.call_args_list[0].args[0] == expected
+        password = mkpass.generate_password(words)
+    assert password.lower() == "word0000-word0000-word0000"
+    assert choice.call_args_list == [
+        mock.call(words),
+        mock.call("-_!$&*+=23456789"),
+        mock.call(words),
+        mock.call("-_!$&*+=23456789"),
+        mock.call(words),
+    ]
+    assert all(call.args[0] is words for call in choice.call_args_list[::2])
 
 
 def test_count_cli_emits_exactly_requested_passwords(sandbox, write_words):
@@ -305,11 +279,6 @@ def test_count_cli_emits_exactly_requested_passwords(sandbox, write_words):
 
 
 @pytest.mark.parametrize("count", ["0", "-1"])
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mkpass loads the missing dictionary before validating count",
-)
 def test_nonpositive_count_is_rejected_before_dictionary_load(sandbox, count):
     """Validate the requested count before reading the dictionary."""
     result = sandbox.cli("mkpass", count)
@@ -334,11 +303,6 @@ def test_grid_reserves_one_row_for_prompt(sandbox, mkpass):
     assert all(line.split() == ["abc-def-ghi"] * 3 for line in stdout.splitlines())
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="rot13 checks string truthiness instead of whether --string was supplied",
-)
 def test_empty_string_and_file_conflict(sandbox):
     """Reject conflicting inputs without altering the input file."""
     source = sandbox.root / "input"
@@ -349,11 +313,6 @@ def test_empty_string_and_file_conflict(sandbox):
     assert result.stdout == ""
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="rot13 accepts empty --string together with explicit stdin",
-)
 def test_empty_string_and_stdin_dash_conflict(sandbox):
     """Reject an empty string combined with explicit stdin input."""
     result = sandbox.cli("rot13", "--string", "", "-", input_text="do not consume")
@@ -368,11 +327,6 @@ def test_empty_string_alone_outputs_nothing(sandbox):
     assert result.stdout == ""
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="indirs rewrites --parallel=N even after the -- terminator",
-)
 def test_parallel_normalization_stops_at_option_terminator(indirs):
     """Leave arguments after the option terminator unchanged."""
     argv = ["--parallel=2", "--", "--parallel=9", "--parallel=3"]

@@ -95,11 +95,6 @@ def test_cycle_swaps_contents_without_loss(mv_count, make_file, rename, file_con
     assert file_contents() == {"a": b"b", "b": b"a"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mv_count does not validate duplicate source paths before renaming",
-)
 def test_duplicate_sources_are_rejected_before_mutation(
     make_file, reject_plan, file_contents
 ):
@@ -114,43 +109,18 @@ def test_duplicate_sources_are_rejected_before_mutation(
     [
         pytest.param(
             "{",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="mv_count exposes unmatched-brace format errors",
-            ),
         ),
         pytest.param(
             "{missing}",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=KeyError,
-                reason="mv_count exposes named-field format errors",
-            ),
         ),
         pytest.param(
             "{1}",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=IndexError,
-                reason="mv_count exposes missing-positional-field format errors",
-            ),
         ),
         pytest.param(
             "{:invalid}",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=ValueError,
-                reason="mv_count exposes invalid format-specifier errors",
-            ),
         ),
         pytest.param(
             "{0.missing}",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AttributeError,
-                reason="mv_count exposes invalid format-field attribute errors",
-            ),
         ),
     ],
 )
@@ -172,11 +142,6 @@ def test_duplicate_destinations_are_rejected_before_mutation(
     assert file_contents() == {"a": b"a", "b": b"b"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mv_count uses exists() and overlooks dangling destination symlinks",
-)
 def test_dangling_symlink_destination_is_a_conflict(work, make_file, reject_plan):
     """Preserve dangling destination symlinks when force is disabled."""
     source = make_file("a")
@@ -188,11 +153,6 @@ def test_dangling_symlink_destination_is_a_conflict(work, make_file, reject_plan
     assert source.read_bytes() == b"a"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mv_count checks source existence but not unsupported directory sources",
-)
 def test_directory_source_is_rejected_before_mutation(work, reject_plan):
     """Reject directory sources and preserve their contents."""
     source = work / "directory"
@@ -208,19 +168,9 @@ def test_directory_source_is_rejected_before_mutation(work, reject_plan):
     [
         pytest.param(
             "missing",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AssertionError,
-                reason="mv_count does not preflight missing destination parents",
-            ),
         ),
         pytest.param(
             "not-a-directory",
-            marks=pytest.mark.xfail(
-                strict=True,
-                raises=AssertionError,
-                reason="mv_count does not preflight non-directory destination parents",
-            ),
         ),
     ],
 )
@@ -236,11 +186,6 @@ def test_invalid_destination_parents_are_rejected_before_mutation(
     assert file_contents() == {"a": b"a", "not-a-directory": b"not-a-directory"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=AssertionError,
-    reason="mv_count force bypasses destination-directory validation",
-)
 def test_destination_directory_is_rejected_even_with_force(
     work, make_file, reject_plan
 ):
@@ -262,11 +207,6 @@ def test_sandbox_cli_does_not_mutate_files(sandbox, work, make_file, file_conten
     assert file_contents() == {"a": b"a"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=OSError,
-    reason="mv_count propagates staging errors without restoring staged sources",
-)
 def test_staging_failure_recovers_previously_staged_sources(
     work, make_file, rename, file_contents
 ):
@@ -288,11 +228,6 @@ def test_staging_failure_recovers_previously_staged_sources(
     assert file_contents() == {"a": b"a", "b": b"b"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=OSError,
-    reason="mv_count propagates publication errors without restoring cycle sources",
-)
 def test_publication_failure_recovers_cycle_sources(make_file, rename, file_contents):
     """Restore both original payloads after a cycle publication fails."""
     first, second = make_file("a"), make_file("b")
@@ -326,11 +261,6 @@ def test_force_success_overwrites_only_unrelated_destination(
     assert file_contents() == {destination.name: b"a"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=OSError,
-    reason="mv_count overwrites unrelated destinations without backup or rollback",
-)
 def test_force_publication_failure_restores_unrelated_backup(
     mv_count, work, make_file, rename, file_contents
 ):
@@ -355,11 +285,6 @@ def test_force_publication_failure_restores_unrelated_backup(
     assert file_contents() == {"a": b"a", "b": b"b", "one": b"unrelated payload"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=pytest.fail.Exception,
-    reason="mv_count never backs up an unrelated destination before overwriting it",
-)
 def test_backup_staging_failure_restores_sources_and_destination(
     make_file, rename, file_contents
 ):
@@ -381,11 +306,6 @@ def test_backup_staging_failure_restores_sources_and_destination(
     assert file_contents() == {"a": b"a", "one": b"unrelated"}
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=OSError,
-    reason="mv_count has no rollback or retained-payload diagnostics after publication failure",
-)
 def test_rollback_failure_retains_payload_and_reports_its_location(
     work, make_file, rename, capsys
 ):

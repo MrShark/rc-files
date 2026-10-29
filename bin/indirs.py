@@ -30,7 +30,10 @@ def positive_int(value: str) -> int:
 def normalize_parallel_args(argv: list[str]) -> list[str]:
     """Convert the optional-value syntax to options argparse can parse safely."""
     normalized = []
-    for arg in argv:
+    for index, arg in enumerate(argv):
+        if arg == "--":
+            normalized.extend(argv[index:])
+            break
         if arg.startswith("--parallel="):
             normalized.append(f"--worker-count={arg.partition('=')[2]}")
         else:

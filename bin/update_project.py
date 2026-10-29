@@ -171,16 +171,20 @@ class HookUpdater(Updater):
         return next((cwd / f for f in self._CONFIG_FILES if (cwd / f).exists()), None)
 
     def is_applicable(self) -> bool:  # noqa: D102
-        return self._find_config() is not None
+        return self._config_path is not None
 
     def is_available(self) -> bool:  # noqa: D102
-        return self._cmd is not None
+        return self._cmd is not None and (
+            self._cmd == "prek"
+            or self._config_path is None
+            or self._config_path.suffix != ".toml"
+        )
 
     # -- internal -----------------------------------------------------------
 
     def _parse_config(self) -> dict[str, str]:
         """Return {repo_url: rev} from prek.toml or .pre-commit-config.yaml."""
-        config_file = self._find_config()
+        config_file = self._config_path
         if config_file is None:
             return {}
         if config_file.suffix == ".toml":
@@ -210,19 +214,26 @@ class HookUpdater(Updater):
         return self._parse_config()
 
     def update(self) -> None:  # noqa: D102
-        if not self._cmd:
-            msg = "is_available() must be called before update()"
+        if not self.is_available() or self._config_path is None:
+            msg = "No compatible hook updater or config found"
             raise RuntimeError(msg)
 
         try:
-            run([self._cmd, self._CMD_SUBCMD[self._cmd]])
+            run(
+                [
+                    self._cmd,
+                    self._CMD_SUBCMD[self._cmd],
+                    "--config",
+                    str(self._config_path),
+                ]
+            )
         except subprocess.CalledProcessError as exc:
             print(exc.stderr, file=sys.stderr)
             msg = f"{self._cmd} {self._CMD_SUBCMD[self._cmd]} failed"
             raise RuntimeError(msg) from exc
 
     def tracked_files(self) -> list[str]:  # noqa: D102
-        config_file = self._find_config()
+        config_file = self._config_path
         return [config_file.name] if config_file else []
 
     def describe_changes(  # noqa: D102
@@ -266,11 +277,7 @@ def ensure_clean_tree() -> None:
 
 
 def create_branch(branch: str) -> None:
-    try:
-        git(["checkout", "-b", branch])
-    except subprocess.CalledProcessError as err:
-        msg = f"Branch '{branch}' already exists. Delete it or use --branch to choose another name."
-        raise SystemExit(msg) from err
+    git(["checkout", "-b", branch])
     print(f"Created and checked out branch: {branch}")
 
 
@@ -286,8 +293,13 @@ def has_staged_changes() -> bool:
         ["git", "diff", "--cached", "--quiet"],  # noqa: S607
         check=False,
         capture_output=True,
+        text=True,
     )
-    return result.returncode != 0
+    if result.returncode not in (0, 1):
+        raise subprocess.CalledProcessError(
+            result.returncode, result.args, result.stdout, result.stderr
+        )
+    return result.returncode == 1
 
 
 def commit(message: str) -> None:
@@ -344,7 +356,8 @@ def find_tools() -> list[Updater]:
             continue
         if not updater.is_available():
             print(
-                f"[{updater.name}] skipping — CLI tool not installed", file=sys.stderr
+                f"[{updater.name}] skipping — compatible CLI tool not installed",
+                file=sys.stderr,
             )
             continue
         active.append(updater)
@@ -387,8 +400,7 @@ def commit_changes(
     return True
 
 
-def main() -> int:
-    args = parse_args()
+def update_project(args: argparse.Namespace) -> int:
     branch = args.branch or f"chore/update-deps-{date.today().isoformat()}"  # noqa: DTZ011
 
     active = find_tools()
@@ -423,6 +435,22 @@ def main() -> int:
 
     commit_changes(commit_sections, files_to_stage)
     return 0
+
+
+def main() -> int:
+    args = parse_args()
+    try:
+        return update_project(args)
+    except subprocess.CalledProcessError as exc:
+        detail = (exc.stderr or exc.stdout or "").strip()
+        print(
+            f"Command failed (exit {exc.returncode}): {' '.join(exc.cmd)}"
+            + (f"\n{detail}" if detail else ""),
+            file=sys.stderr,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"update_project: {exc}", file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":

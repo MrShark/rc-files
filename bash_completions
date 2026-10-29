@@ -1,23 +1,23 @@
 
 _pip() {
-    cur="${COMP_WORDS[COMP_CWORD]}"
-    prev="${COMP_WORDS[COMP_CWORD-1]}"
-    first="${COMP_WORDS[0]}"
+    local cur="${COMP_WORDS[COMP_CWORD]}"
+    local first="${COMP_WORDS[0]}"
+    local subcommand="${COMP_WORDS[1]}"
+    local commands command_opts
 
-    commands=$($first --help | awk '/Commands\:/,/General Options\:/' | \
+    commands=$("$first" --help | awk '/Commands\:/,/General Options\:/' | \
                \grep -E -o "^\s{2}\w*" | tr -d ' ')
-    opts=$($first --help | \grep -E -o "((-\w{1}|--(\w|-)*=?)){1,2}")
 
 
     if [ $COMP_CWORD == 1 ] ; then
-        COMPREPLY=( $(compgen -W "${commands}" -- ${cur}) )
+        COMPREPLY=( $(compgen -W "${commands}" -- "${cur}") )
         return 0
     fi
 
     if [[ ${cur} == -* ]] ; then
-        local command_opts=$($first $prev --help | \
+        command_opts=$("$first" "$subcommand" --help | \
                              \grep -E -o "((-\w{1}|--(\w|-)*=?)){1,2}")
-        COMPREPLY=( $(compgen -W "${command_opts}" -- ${cur}) )
+        COMPREPLY=( $(compgen -W "${command_opts}" -- "${cur}") )
         return 0
     fi
 }

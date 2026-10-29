@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 # Base directories
@@ -38,15 +39,21 @@ def install_link(src: Path, dst: Path, *, force_links: bool, force_file: bool) -
     """
     if dst.exists(follow_symlinks=False):
         if not dst.is_symlink():
+            if dst.is_dir():
+                msg = f"Cannot replace directory: {dst}"
+                raise SystemExit(msg)
             if not force_file:
-                print(f"{dst} exists, but is not a symlink")
-                return
+                msg = f"{dst} exists, but is not a symlink"
+                raise SystemExit(msg)
+            if not dst.is_file():
+                msg = f"Cannot replace non-regular file: {dst}"
+                raise SystemExit(msg)
             dst.unlink()
             print(f"Removed file {dst}")
         elif dst.resolve() != src.resolve():
             if not force_links:
-                print(f"{dst} is a symlink, but not to {src}")
-                return
+                msg = f"{dst} is a symlink, but not to {src}"
+                raise SystemExit(msg)
             dst.unlink()
             print(f"Removed link {dst}")
         else:
@@ -56,20 +63,7 @@ def install_link(src: Path, dst: Path, *, force_links: bool, force_file: bool) -
     print(f"Created link {dst} -> {src}")
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Install rc-files symlinks.")
-    parser.add_argument(
-        "--force-links",
-        action="store_true",
-        help="Overwrite existing symlinks that point elsewhere",
-    )
-    parser.add_argument(
-        "--force-file",
-        action="store_true",
-        help="Overwrite existing regular files",
-    )
-    args = parser.parse_args()
-
+def install(args: argparse.Namespace) -> None:
     # Install individual dot-files
     for dotfile in DOTFILES:
         install_link(
@@ -96,5 +90,27 @@ def main() -> None:
             )
 
 
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Install rc-files symlinks.")
+    parser.add_argument(
+        "--force-links",
+        action="store_true",
+        help="Overwrite existing symlinks that point elsewhere",
+    )
+    parser.add_argument(
+        "--force-file",
+        action="store_true",
+        help="Overwrite existing regular files",
+    )
+    args = parser.parse_args()
+
+    try:
+        install(args)
+    except (OSError, RuntimeError) as exc:
+        print(f"install: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

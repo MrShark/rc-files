@@ -29,7 +29,7 @@ def main():
     args = parser.parse_args()
 
     # Validate mutually exclusive inputs
-    if args.string and args.file:
+    if args.string is not None and args.file is not None:
         parser.error("Specify either -s/--string or an input file, not both.")
 
     try:
@@ -56,7 +56,7 @@ def main():
         else:
             sys.stdout.write(encoded)
 
-    except Exception as e:  # noqa: BLE001
+    except (OSError, UnicodeError) as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
 
