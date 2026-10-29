@@ -73,8 +73,15 @@ indirs --parallel=2 --no-shell 'git status --short' project-a project-b
 - Default: sequential execution through the shell; quote the command to defer
   expansion until it runs inside each directory.
 - `--no-shell`: splits the string with `shlex`, without shell expansion or pipes.
+- `--header`: prints the directory argument exactly as supplied (including `./`
+  and trailing slashes) in green, followed by a colour reset, before its command
+  output. Sequential headers are flushed before starting the command.
 - `--parallel`: uses the CPU count; `--parallel=N` sets a positive worker count
-  (use `=`, not a separate numeric argument). Concurrent output may interleave.
+  (use `=`, not a separate numeric argument). Each command's output is buffered
+  until completion, then published in directory argument order as one block:
+  optional header, stdout, stderr and any failure diagnostic. Stdout and stderr
+  keep their separate channels; their original relative timing is not retained.
+  Sequential execution continues to stream output without buffering.
 - Invalid directories or failed commands cause a non-zero exit, but do not stop
   processing the other valid directories. `--` ends option parsing.
 

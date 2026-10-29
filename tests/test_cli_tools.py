@@ -1,5 +1,6 @@
 """Safe offline CLI and core-function regressions for the smaller tools."""
 
+import io
 import os
 import re
 import shlex
@@ -362,16 +363,19 @@ def test_parallel_runs_all_directories(
 ):
     """Honor the worker count and run every directory despite one failure."""
 
-    def run(directory, command, _argv):
+    def run(directory, command, _argv, *, capture_output):
+        assert capture_output
         (directory / "result").write_text(command)
-        return directory != directories[1]
+        result = subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+        error = "command failed" if directory == directories[1] else None
+        return result, error
 
     with (
         mock.patch.object(indirs.os, "cpu_count", return_value=3),
         mock.patch.object(
             indirs, "ThreadPoolExecutor", wraps=ThreadPoolExecutor
         ) as executor,
-        mock.patch.object(indirs, "run_in_directory", side_effect=run),
+        mock.patch.object(indirs, "run_command", side_effect=run),
     ):
         result, _, _ = sandbox.main(indirs, option, "marker", *directories)
     executor.assert_called_once_with(max_workers=expected_workers)
@@ -391,3 +395,205 @@ def test_no_shell_preserves_literal_glob(sandbox, directories):
     result = sandbox.cli("indirs", "--no-shell", command, directory)
     assert result.returncode == 0, result.stderr
     assert result.stdout == "*.txt\n"
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+@pytest.mark.parametrize("no_shell", [[], ["--no-shell"]])
+def test_indirs_header_preserves_spelling_before_output(
+    sandbox, directories, options, no_shell
+):
+    """Keep dot prefixes, repeated separators and trailing slashes in headers."""
+    spellings = ["./first/", "second//", "./third/../third/"]
+    command = shlex.join(
+        [sys.executable, "-c", "import os; print(os.path.basename(os.getcwd()))"]
+    )
+    result = sandbox.cli("indirs", *options, *no_shell, "--header", command, *spellings)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "".join(
+        f"\x1b[32m{spelling}\x1b[0m\n{directory.name}\n"
+        for spelling, directory in zip(spellings, directories, strict=True)
+    )
+    assert result.stderr == ""
+
+
+@pytest.mark.parametrize("header", [[], ["--header"]])
+def test_indirs_parallel_groups_overlapping_stdout_and_stderr(
+    sandbox, directories, header
+):
+    """Drain both pipes and publish whole invocations despite forced overlap."""
+    command = shlex.join(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import pathlib, sys, time; "
+                "directory = pathlib.Path.cwd(); name = directory.name; "
+                "print(name + ':start', flush=True); "
+                "print(name + ':start', file=sys.stderr, flush=True); "
+                "(directory / 'started').touch(); "
+                "deadline = time.monotonic() + 5\n"
+                "while len(list(directory.parent.glob('*/started'))) < 2:\n"
+                "    if time.monotonic() > deadline: sys.exit(9)\n"
+                "    time.sleep(0.01)\n"
+                "sys.stdout.write(name + ':out:' + 'x' * 100000 + '\\n'); "
+                "sys.stdout.flush(); "
+                "sys.stderr.write(name + ':err:' + 'y' * 100000 + '\\n'); "
+                "sys.stderr.flush(); "
+                "print(name + ':end', flush=True); "
+                "print(name + ':end', file=sys.stderr, flush=True)"
+            ),
+        ]
+    )
+    paths = directories[:2]
+    result = sandbox.cli(
+        "indirs", "--parallel=2", "--no-shell", *header, command, *paths
+    )
+    assert result.returncode == 0, result.stderr
+    order = [
+        line.split(":")[0] for line in result.stdout.splitlines() if ":start" in line
+    ]
+    assert set(order) == {path.name for path in paths}
+    headers = {
+        path.name: f"\x1b[32m{path}\x1b[0m\n" if header else "" for path in paths
+    }
+    assert result.stdout == "".join(
+        f"{headers[name]}{name}:start\n{name}:out:{'x' * 100000}\n{name}:end\n"
+        for name in order
+    )
+    assert result.stderr == "".join(
+        f"{name}:start\n{name}:err:{'y' * 100000}\n{name}:end\n" for name in order
+    )
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel"], ["--parallel=2"]])
+def test_indirs_command_failure_continues_with_headers(sandbox, directories, options):
+    """Keep output and headers from every valid directory after a command fails."""
+    command = shlex.join(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import pathlib, sys; name = pathlib.Path.cwd().name; "
+                "print(name); print(name, file=sys.stderr); sys.exit(name == 'first')"
+            ),
+        ]
+    )
+    spellings = [f"./{directory.name}/" for directory in directories[:2]]
+    result = sandbox.cli(
+        "indirs", *options, "--no-shell", "--header", command, "missing", *spellings
+    )
+    assert_clean_failure(result, "not a directory")
+    assert "exit status 1" in result.stderr
+    assert (
+        result.stdout
+        == "\x1b[32m./first/\x1b[0m\nfirst\n\x1b[32m./second/\x1b[0m\nsecond\n"
+    )
+    assert "first\n" in result.stderr
+    assert "second\n" in result.stderr
+    assert result.returncode == 1
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+def test_indirs_missing_executable_continues_cleanly(sandbox, directories, options):
+    """Report launch errors for every invocation without a traceback."""
+    result = sandbox.cli(
+        "indirs",
+        *options,
+        "--header",
+        "--no-shell",
+        "./missing-executable",
+        *directories,
+    )
+    assert_clean_failure(result, "could not run command")
+    assert result.returncode == 1
+    assert result.stdout == "".join(f"\x1b[32m{path}\x1b[0m\n" for path in directories)
+    for path in directories:
+        assert f"could not run command in {path}:" in result.stderr
+
+
+@pytest.mark.parametrize("count", ["0", "-1", "bad", ""])
+def test_indirs_header_does_not_change_invalid_worker_count(sandbox, count):
+    """Reject invalid worker counts before starting any command."""
+    result = sandbox.cli("indirs", "--header", f"--parallel={count}", "unused", ".")
+    assert_clean_failure(result, "worker count must be a positive integer")
+    assert result.returncode == 2
+    assert result.stdout == ""
+
+
+def test_indirs_sequential_header_precedes_launch_without_capturing(
+    sandbox, indirs, directories
+):
+    """Leave subprocess streams inherited and print the header before launching."""
+
+    def run(command, **kwargs):
+        assert sys.stdout.getvalue() == "\x1b[32m./first/\x1b[0m\n"
+        assert not kwargs["capture_output"]
+        assert kwargs["cwd"] == directories[0].relative_to(sandbox.root)
+        assert not kwargs["shell"]
+        assert "stdout" not in kwargs
+        assert "stderr" not in kwargs
+        print("streamed stdout")
+        print("streamed stderr", file=sys.stderr)
+        return subprocess.CompletedProcess(command, 0)
+
+    with mock.patch.object(indirs.subprocess, "run", side_effect=run):
+        result, stdout, stderr = sandbox.main(
+            indirs, "--header", "--no-shell", "command", "./first/"
+        )
+    assert result == 0
+    assert stdout == "\x1b[32m./first/\x1b[0m\nstreamed stdout\n"
+    assert stderr == "streamed stderr\n"
+
+
+def test_indirs_parallel_publication_groups_both_channels_and_diagnostics(
+    indirs, directories
+):
+    """Finish every block, including stderr, before publishing another header."""
+    stream = io.StringIO()
+    spellings = [f"./{path.name}/" for path in directories]
+
+    def run(directory, command, _argv, *, capture_output):
+        assert capture_output
+        name = directory.name
+        result = subprocess.CompletedProcess(
+            command, 0, stdout=f"{name} out\n", stderr=f"{name} err\n"
+        )
+        return result, "indirs: failure" if directory == directories[1] else None
+
+    with (
+        mock.patch.object(indirs, "run_command", side_effect=run),
+        mock.patch.object(sys, "stdout", stream),
+        mock.patch.object(sys, "stderr", stream),
+    ):
+        failed = indirs.run_parallel(
+            list(zip(directories, spellings, strict=True)),
+            "command",
+            None,
+            2,
+            header=True,
+        )
+    assert failed
+    assert stream.getvalue() == (
+        "\x1b[32m./first/\x1b[0m\nfirst out\nfirst err\n"
+        "\x1b[32m./second/\x1b[0m\nsecond out\nsecond err\nindirs: failure\n"
+        "\x1b[32m./third/\x1b[0m\nthird out\nthird err\n"
+    )
+
+
+@pytest.mark.parametrize("options", [[], ["--parallel=2"]])
+def test_indirs_option_terminator_preserves_header_directory(sandbox, options):
+    """Treat a directory named like the flag as positional after the terminator."""
+    (sandbox.root / "--header").mkdir()
+    command = shlex.join([sys.executable, "-c", "print('plain')"])
+    result = sandbox.cli("indirs", *options, "--no-shell", "--", command, "--header")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout == "plain\n"
+
+
+@pytest.mark.parametrize("command", ["", "'unclosed"])
+def test_indirs_header_preserves_no_shell_validation(sandbox, command):
+    """Fail argument validation before emitting a header or starting a command."""
+    result = sandbox.cli("indirs", "--no-shell", "--header", command, ".")
+    assert_clean_failure(result, "command")
+    assert result.returncode == 2
+    assert result.stdout == ""

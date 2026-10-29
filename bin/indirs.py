@@ -2,7 +2,7 @@
 """
 Run one command in each of the specified directories.
 
-Usage: indirs [--no-shell] [--parallel][=N] <command> <dir> ...
+Usage: indirs [--header] [--no-shell] [--parallel][=N] <command> <dir> ...
 """
 
 import argparse
@@ -12,6 +12,9 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+
+GREEN = "\033[32m"
+RESET = "\033[0m"
 
 
 def positive_int(value: str) -> int:
@@ -47,6 +50,11 @@ def create_parser() -> argparse.ArgumentParser:
         description="Run one command in each of the specified directories",
     )
     parser.add_argument(
+        "--header",
+        action="store_true",
+        help="print each directory argument in green before its command output",
+    )
+    parser.add_argument(
         "--no-shell",
         action="store_true",
         help="split the command into arguments without shell expansion",
@@ -66,24 +74,52 @@ def create_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_in_directory(directory: Path, command: str, argv: list[str] | None) -> bool:
+def run_command(directory, command, argv, *, capture_output=False):
     try:
         result = subprocess.run(  # noqa: S603
             argv if argv is not None else command,
             cwd=directory,
             shell=argv is None,
             check=False,
+            capture_output=capture_output,
+            text=True,
+            errors="replace",
         )
     except OSError as exc:
-        print(f"indirs: could not run command in {directory}: {exc}", file=sys.stderr)
-        return False
+        return None, f"indirs: could not run command in {directory}: {exc}"
     if result.returncode:
-        print(
-            f"indirs: command failed in {directory} (exit status {result.returncode})",
-            file=sys.stderr,
+        return result, (
+            f"indirs: command failed in {directory} (exit status {result.returncode})"
         )
-        return False
-    return True
+    return result, None
+
+
+def run_in_directory(directory: Path, command: str, argv: list[str] | None) -> bool:
+    _, error = run_command(directory, command, argv)
+    if error is not None:
+        print(error, file=sys.stderr)
+    return error is None
+
+
+def run_parallel(directories, command, argv, workers, *, header):
+    failed = False
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        results = executor.map(
+            lambda item: run_command(item[0], command, argv, capture_output=True),
+            directories,
+        )
+        for (_, spelling), (result, error) in zip(directories, results, strict=True):
+            if header:
+                print(f"{GREEN}{spelling}{RESET}", flush=True)
+            if result is not None:
+                sys.stdout.write(result.stdout)
+                sys.stdout.flush()
+                sys.stderr.write(result.stderr)
+                sys.stderr.flush()
+            if error is not None:
+                print(error, file=sys.stderr, flush=True)
+                failed = True
+    return failed
 
 
 def main() -> int:
@@ -107,7 +143,7 @@ def main() -> int:
             print(f"indirs: not a directory: {directory}", file=sys.stderr)
             failed = True
         else:
-            directories.append(directory)
+            directories.append((directory, item))
 
     workers = args.worker_count
     parallel = args.parallel or workers is not None
@@ -115,16 +151,13 @@ def main() -> int:
         workers = os.cpu_count() or 1
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=workers) as executor:
-            for succeeded in executor.map(
-                lambda directory: run_in_directory(
-                    directory, args.command, command_args
-                ),
-                directories,
-            ):
-                failed |= not succeeded
+        failed |= run_parallel(
+            directories, args.command, command_args, workers, header=args.header
+        )
     else:
-        for directory in directories:
+        for directory, spelling in directories:
+            if args.header:
+                print(f"{GREEN}{spelling}{RESET}", flush=True)
             failed |= not run_in_directory(directory, args.command, command_args)
 
     return int(failed)
